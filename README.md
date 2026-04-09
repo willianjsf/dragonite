@@ -12,11 +12,11 @@
 
 <!-- INSERT SHORT DESCRIPTION HERE -->
 
-Multi-party Federated Chat System, using the Matrix Protocol.
+A Federated Multi-Party Chat System in Golang and Svelte, using Matrix Protocol.
 
 <!-- LONG DESCRIPTION HERE -->
 
-This project is in the scope of a Distribuited Systems Development course. **Dragonite** is a _multi-party federated chat_, using the [Matrix.org](https://matrix.org) Protocol. The Matrix server is built using the Go programming language. As you can see on the banner, we're inspired by the dragonite mailer from the Pokemon&copy; franchise.
+This project is in the scope of a Distribuited Systems Introduction Course. **Dragonite** is a _multi-party federated chat_, using the [Matrix.org](https://matrix.org) Protocol, to create a federated chat-app, our server is built using the Go programming language, while the client uses SvelteKit and the `matrix-js-sdk`. Finnaly, as you can see on the banner, we're inspired by the dragonite mailer from the Pokemon&copy; franchise.
 
 <!-- ## Table of Contents -->
 
@@ -24,12 +24,63 @@ This project is in the scope of a Distribuited Systems Development course. **Dra
 
 <!--## Background-->
 
-## Install & Usage
+## Install
 
-The Dragonite Project offers both a **client** and **server** app. To see the proper installation and usage guides for the tool:
+### Prerequisites
 
-- [Server's Documentation](client/dragonite/README.md)
-- [Client's Documentation](docs/client/README.md)
+- [npm](https://npmjs.com/)
+- [Go](https://godoc.org/)
+- [Docker](https://www.docker.com/)
+
+1. To install the client, clone this project.
+
+```sh
+git clone https://github.com/caio-bernardo/dragonite.git
+```
+
+See the following for the frontend:
+
+1. Enter the `frontend` folder
+
+```sh
+cd frontend
+```
+
+2. Install the dependencies
+
+```sh
+npm install
+```
+
+## Usage
+
+Considering you have cloned this project. Make a copy of the `.env.example` file and rename to `.env`. Fill the environmet variables.
+
+### Client
+
+To run the client just use `npm`:
+
+```sh
+npm run dev
+```
+
+Access the endpoint on the terminal, normally http://localhost:5173.
+
+### Server
+
+1. (Optionally) create a container for the database
+
+```sh
+make docker-run
+```
+
+2. Run the project using the Makefile (see more commands at [Makefile](./Makefile)).
+
+```sh
+make run
+```
+
+3. Use `Ctrl-C` to stop the server and `make docker-down` to disable the container.
 
 <!-- ### CLI/Others -->
 
