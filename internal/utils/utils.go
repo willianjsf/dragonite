@@ -27,10 +27,12 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	return nil
 }
 
+// WriteError escreve uma resposta de erro em uma reponse, acompanhada de um status Code
 func WriteError(w http.ResponseWriter, status int, message types.ErrorResponse) {
 	WriteJSON(w, status, message)
 }
 
+// UnimplementedHandler representa um handler não implementado ainda.
 func UnimplementedHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "Not Implemented", http.StatusNotImplemented)
 }
