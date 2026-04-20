@@ -2,14 +2,13 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/MicahParks/keyfunc/v3"
+	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -17,14 +16,6 @@ import (
 type responseWriter struct {
 	statusCode int
 	http.ResponseWriter
-}
-
-type contextKey string
-
-const userClaimsKey contextKey = "userClaims"
-
-type TokenService interface {
-	ValidateToken(tokenString string) (*jwt.Token, error)
 }
 
 // Middleware que gerencia o cabeçalho de CORS
@@ -83,17 +74,23 @@ func (s *AppServer) TokenBearerMiddleware(next http.Handler) http.Handler {
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
 		//Delega a validação criptográfica e de federação ao serviço
-		token, err := s.tokenService.ValidateToken(tokenString)
-		if err != nil {
+		claims := &types.MatrixClaims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (any, error) {
+			// Checagem de segurança se o token não teve o algoritmo substituido
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return types.JWTSecretKey, nil
+		})
+		if err != nil || !token.Valid {
 			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
-		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			ctx := context.WithValue(r.Context(), userClaimsKey, claims)
-			// Cria um novo request com o contexto atualizado
-			r = r.WithContext(ctx)
-		}
+		ctx := context.WithValue(r.Context(), types.UserIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, types.DeviceIDKey, claims.DeviceID)
+		// Cria um novo request com o contexto atualizado
+		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
 	})
@@ -103,57 +100,4 @@ func (s *AppServer) TokenBearerMiddleware(next http.Handler) http.Handler {
 func (w *responseWriter) WriteHeader(statusCode int) {
 	w.statusCode = statusCode
 	w.ResponseWriter.WriteHeader(statusCode)
-}
-
-type FederatedTokenService struct {
-	jwks          keyfunc.Keyfunc
-	validIssuers  map[string]bool
-	validAudience string
-}
-
-func NewFederatedTokenService(jwksURL, audience string, issuers []string) (*FederatedTokenService, error) {
-	jwks, err := keyfunc.NewDefault([]string{jwksURL})
-	if err != nil {
-		return nil, fmt.Errorf("falha ao inicializar JWKS: %w", err)
-	}
-
-	validIssuers := make(map[string]bool)
-	for _, iss := range issuers {
-		validIssuers[iss] = true
-	}
-
-	return &FederatedTokenService{
-		jwks:          jwks,
-		validIssuers:  validIssuers,
-		validAudience: audience,
-	}, nil
-}
-
-func (s *FederatedTokenService) ValidateToken(tokenString string) (*jwt.Token, error) {
-	// O keyfunc faz o download, faz o cache e aplica a chave pública correta aqui
-	token, err := jwt.Parse(tokenString, s.jwks.Keyfunc)
-	if err != nil {
-		return nil, err
-	}
-
-	if !token.Valid {
-		return nil, errors.New("token inválido")
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, errors.New("formato de claims desconhecido")
-	}
-
-	// Verifica o Audience (Foi emitido para mim?)
-	if aud, ok := claims["aud"].(string); !ok || aud != s.validAudience {
-		return nil, errors.New("audience inválido")
-	}
-
-	// Verifica o Issuer (Foi emitido por alguém em quem eu confio?)
-	if iss, ok := claims["iss"].(string); !ok || !s.validIssuers[iss] {
-		return nil, errors.New("issuer não confiável")
-	}
-
-	return token, nil
 }
