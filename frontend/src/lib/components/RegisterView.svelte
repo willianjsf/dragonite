@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { matrixService } from '$lib';
 	import { toaster } from '$lib/stores/toaster';
-	import { createClient } from 'matrix-js-sdk';
 
 	const homeserver = 'http://localhost:8080';
 	let username = $state('');
@@ -45,23 +45,9 @@
 		}
 
 		try {
-			const client = createClient({ baseUrl: homeserver });
-
-			const response = await client.register(username, userpassword, null, {
-				type: 'm.login.password'
-			});
-
-			if (response.access_token && response.user_id && response.device_id) {
-				localStorage.setItem('matrix_access_token', response.access_token);
-				localStorage.setItem('matrix_user_id', response.user_id);
-				localStorage.setItem('matrix_device_id', response.device_id);
-				localStorage.setItem('matrix_homeserver', homeserver);
-			} else {
-				throw new Error('Invalid response from homeserver');
-			}
-
+			await matrixService.register(homeserver, username, userpassword);
 			// redirect to dashboard if login successful
-			await goto(resolve('/'));
+			await goto(resolve('/dashboard'));
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		} catch (err: any) {
 			console.error(err);
