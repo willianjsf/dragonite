@@ -1,10 +1,9 @@
 // import { redirect } from '@sveltejs/kit';
+import { matrixService } from '$lib';
 import type { LayoutLoad } from './$types';
 
-export const load: LayoutLoad = async ({ parent }) => {
-	const { mClient } = await parent();
-
-	if (!mClient) {
+export const load: LayoutLoad = async () => {
+	if (!matrixService.isAuthenticated()) {
 		// throw redirect(302, '/login'); // TODO: descomentar essa linha depois
 	}
 

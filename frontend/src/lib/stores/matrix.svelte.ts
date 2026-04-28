@@ -1,0 +1,89 @@
+import { createClient, type MatrixClient } from 'matrix-js-sdk';
+import { browser } from '$app/environment';
+
+class MatrixService {
+	client: MatrixClient | null = $state(null);
+	userProfile = $state({ displayname: '', avatarUrl: '' });
+
+	constructor() {
+		if (browser) {
+			this.tryResumeSession();
+		}
+	}
+
+	async tryResumeSession() {
+		const token = localStorage.getItem('matrix_access_token');
+		const baseUrl = localStorage.getItem('matrix_homeserver');
+		const userId = localStorage.getItem('matrix_user_id');
+
+		if (token && baseUrl && userId) {
+			await this.startSession(baseUrl, token, userId);
+		}
+	}
+
+	async startSession(baseUrl: string, accessToken: string, userId: string) {
+		this.client = createClient({
+			baseUrl,
+			accessToken,
+			userId
+		});
+
+		// vai chamar sync a cada 10 segundos
+		await this.client.startClient({ initialSyncLimit: 10 });
+
+		this.fetchProfile();
+	}
+
+	async login(baseUrl: string, username: string, password: string) {
+		const tempClient = createClient({ baseUrl });
+		const response = await tempClient.loginRequest({
+			type: 'm.login.password',
+			identifier: { type: 'm.id.user', user: username },
+			password: password
+		});
+
+		localStorage.setItem('matrix_access_token', response.access_token);
+		localStorage.setItem('matrix_user_id', response.user_id);
+		localStorage.setItem('matrix_device_id', response.device_id);
+		localStorage.setItem('matrix_homeserver', baseUrl);
+
+		await this.startSession(baseUrl, response.access_token, response.user_id);
+	}
+
+	async register(baseUrl: string, username: string, password: string) {
+		const tempClient = createClient({ baseUrl });
+		const response = await tempClient.register(username, password, null, {
+			type: 'm.login.password'
+		});
+
+		if (response.access_token && response.user_id && response.device_id) {
+			localStorage.setItem('matrix_access_token', response.access_token);
+			localStorage.setItem('matrix_user_id', response.user_id);
+			localStorage.setItem('matrix_device_id', response.device_id);
+			localStorage.setItem('matrix_homeserver', baseUrl);
+			await this.startSession(baseUrl, response.access_token, response.user_id);
+		} else {
+			await this.login(baseUrl, username, password);
+		}
+	}
+
+	logout() {
+		if (this.client) this.client.stopClient();
+		localStorage.clear();
+		this.client = null;
+	}
+
+	async fetchProfile() {
+		const info = await this.client?.getProfileInfo(this.client?.getUserId() ?? 'unknown');
+		this.userProfile = {
+			displayname: info?.displayname ?? '',
+			avatarUrl: info?.avatar_url ?? ''
+		};
+	}
+
+	isAuthenticated() {
+		return this.client !== null;
+	}
+}
+
+export const matrixService = new MatrixService();
