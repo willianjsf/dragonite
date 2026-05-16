@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/model"
+	"github.com/caio-bernardo/dragonite/internal/notifier"
 	"github.com/caio-bernardo/dragonite/internal/repository"
 	"github.com/caio-bernardo/dragonite/internal/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
@@ -23,10 +24,11 @@ type Handler struct {
 	usuarioCanalStore repository.UsuarioCanalStore
 	eventoStore       repository.EventoStore
 	serverName        string
+  notifier          notifier.Notifier
 }
 
-func NewHandler(canalStore repository.ChannelStore, usuarioCanalStore repository.UsuarioCanalStore, eventoStore repository.EventoStore, serverName string) *Handler {
-	return &Handler{canalStore: canalStore, usuarioCanalStore: usuarioCanalStore, eventoStore: eventoStore, serverName: serverName}
+func NewHandler(canalStore repository.ChannelStore, usuarioCanalStore repository.UsuarioCanalStore, eventoStore repository.EventoStore, serverName string, notifier notifier.Notifier) *Handler {
+	return &Handler{canalStore: canalStore, usuarioCanalStore: usuarioCanalStore, eventoStore: eventoStore, serverName: serverName, notifier: notifier}
 }
 
 // RegisterRoutes registra todas as rotas de rooms no mux.
@@ -208,6 +210,8 @@ func (h *Handler) postCreateRoom(w http.ResponseWriter, r *http.Request) {
 		// não falha a resposta, a sala foi criada; log é suficiente por ora
 	}
 
+	h.wakeUpRoomUsers(ctx, canal.ID)
+
 	util.WriteJSON(w, http.StatusOK, CreateRoomResponse{RoomID: canal.ID})
 }
 
@@ -267,6 +271,8 @@ func (h *Handler) postJoinRoom(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[ERROR] POST /rooms/%s/join: failed to update member count: %v", roomID, err)
 	}
 
+	h.wakeUpRoomUsers(ctx, roomID)
+
 	util.WriteJSON(w, http.StatusOK, JoinRoomResponse{RoomID: roomID})
 }
 
@@ -315,6 +321,7 @@ func (h *Handler) postLeaveRoom(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[ERROR] POST /rooms/%s/leave: failed to update member count: %v", roomID, err)
 	}
 
+	h.wakeUpRoomUsers(ctx, roomID)
 	// Spec exige {} com 200 OK — mesmo padrão do postLogout
 	util.WriteJSON(w, http.StatusOK, map[string]any{})
 }
@@ -330,6 +337,13 @@ func generateRoomLocalPart() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }
 
+func (h *Handler) wakeUpRoomUsers(ctx context.Context, roomID string, additionalUsers ...string) {
+	usersInRoom, _ := h.usuarioCanalStore.GetJoinedUserIDsInRoom(ctx, roomID)
+	usersToNotify := append(usersInRoom, additionalUsers...)
+
+	for _, uid := range usersToNotify {
+		h.notifier.Notify(uid)
+	}
 // generateEventID gera o ID único de um evento no formato Matrix: $<base64url_random>
 // Mesmo padrão de generateRoomLocalPart(), só muda o prefixo ($ no lugar de !)
 func generateEventID() (string, error) {
