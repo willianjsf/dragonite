@@ -15,8 +15,8 @@ type Evento struct {
 
 	StreamOrdering int64 `json:"stream_ordering"`
 
-	StateKey string `json:"state_key"`
-	Redacts  string `json:"redacts"`
+	StateKey *string `json:"state_key"`
+	Redacts  string  `json:"redacts"`
 
 	PrevEventos []string `json:"prev_eventos"`
 	AuthEventos []string `json:"auth_eventos"`

@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
@@ -11,13 +10,15 @@ import (
 )
 
 type UsuarioService struct {
+	eventBus     EventBus
 	eventoStore  EventoStorage
 	usuarioStore UsuarioStorage
 	canalStore   CanalStorage
 }
 
-func NewUsuarioService(eventoStore EventoStorage, usuarioStore UsuarioStorage, canalStore CanalStorage) *UsuarioService {
+func NewUsuarioService(eventoStore EventoStorage, usuarioStore UsuarioStorage, canalStore CanalStorage, eventBus EventBus) *UsuarioService {
 	return &UsuarioService{
+		eventBus:     eventBus,
 		eventoStore:  eventoStore,
 		usuarioStore: usuarioStore,
 		canalStore:   canalStore,
@@ -52,44 +53,4 @@ func (u *UsuarioService) SearchProfiles(ctx context.Context, term string, limit 
 		NextToken: "",
 	}
 	return u.usuarioStore.SearchProfiles(ctx, filter)
-}
-
-func (u *UsuarioService) Sync(ctx context.Context, since domain.SyncToken, timeout time.Duration) ([]domain.Evento, *domain.SyncToken, error) {
-
-	userID := ctx.Value("userID").(string)
-	// Lógica de Long-Polling
-	if since.TimelinePosition != 0 {
-		hasEvents, err := u.eventoStore.CheckNew(ctx, userID, since)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if !hasEvents && timeout > 0 {
-			// sem eventos, long-polling
-			ch := u.notifier.Subscribe(userID)
-			defer u.notifier.Unsubscribe(userID, ch)
-
-			select {
-			case <-ch:
-				// Novo evento, pode acessar o banco
-			case <-time.After(timeout):
-				// Deu timeout antes de um novo evento, cria novo token e retorna
-				maxGlobal, _ := u.eventoStore.GetMaxGlobalStreamOrdering(ctx)
-				if maxGlobal > since.TimelinePosition {
-					since.TimelinePosition = maxGlobal
-				}
-				return nil, &since, types.ErrTimeout
-			case <-ctx.Done():
-				// o client se desconectou
-				return nil, nil, types.ErrLooseConnection
-			}
-		}
-	}
-
-	// accesso ao banco
-	events, newToken, err := u.eventoStore.GetSince(ctx, userID, since)
-	if err != nil {
-		return nil, nil, err
-	}
-	return events, newToken, nil
 }

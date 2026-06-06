@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
+	"github.com/caio-bernardo/dragonite/internal/util"
 )
 
 var (
@@ -17,7 +18,7 @@ var (
 func WriteJSON(w http.ResponseWriter, status int, v any) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	res, err := json.Marshal(v)
+	res, err := util.CanonicalJSON(v)
 	if err != nil {
 		return err
 	}
@@ -74,8 +75,4 @@ func WriteMatrixError(w http.ResponseWriter, status int, errcode MatrixErrorCode
 		ErrCode: errcode,
 		Message: message,
 	})
-}
-
-func CanonicalJSON(v any) ([]byte, error) {
-	return json.Marshal(v)
 }

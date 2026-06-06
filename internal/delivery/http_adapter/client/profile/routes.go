@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
-	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
@@ -17,7 +16,7 @@ func NewHandler(profileService usecase.ProfileService) *Handler {
 	return &Handler{profileService: profileService}
 }
 
-func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware types.Middleware) {
+func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Middleware) {
 
 	// Chave do perfil do usuário
 	mux.HandleFunc("GET /_matrix/client/v3/profile/{userId}/keys", h.getProfileKey)
@@ -120,8 +119,7 @@ func (h *Handler) putProfileKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	props := domain.Profile{
-		IDUsuario:   userID,
+	props := usecase.ProfileParams{
 		DisplayName: nil,
 		AvatarURL:   nil,
 	}
@@ -133,7 +131,7 @@ func (h *Handler) putProfileKey(w http.ResponseWriter, r *http.Request) {
 		props.AvatarURL = &novoValor
 	}
 
-	err := h.profileService.UpdateProfile(r.Context(), props)
+	err := h.profileService.UpdateProfile(r.Context(), userID, props)
 	if err != nil {
 		if err == types.ErrNotFound {
 			httputil.WriteMatrixError(w, http.StatusNotFound,
@@ -158,8 +156,7 @@ func (h *Handler) deleteProfileKey(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("userId")
 	keyName := r.PathValue("keyName")
 
-	props := domain.Profile{
-		IDUsuario:   userID,
+	props := usecase.ProfileParams{
 		DisplayName: nil,
 		AvatarURL:   nil,
 	}
@@ -171,7 +168,7 @@ func (h *Handler) deleteProfileKey(w http.ResponseWriter, r *http.Request) {
 		props.AvatarURL = new("")
 	}
 
-	err := h.profileService.UpdateProfile(r.Context(), props)
+	err := h.profileService.UpdateProfile(r.Context(), userID, props)
 
 	if err != nil {
 		httputil.WriteMatrixError(w, http.StatusInternalServerError,

@@ -8,4 +8,5 @@ var (
 	ErrNoBodyFound       = errors.New("No body found")
 	ErrTimeout           = errors.New("Timeout")
 	ErrLooseConnection   = errors.New("Loose connection")
+	ErrInvalidUserID     = errors.New("Invalid user ID")
 )

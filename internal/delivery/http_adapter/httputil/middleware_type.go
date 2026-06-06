@@ -1,4 +1,4 @@
-package types
+package httputil
 
 import (
 	"net/http"
