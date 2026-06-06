@@ -8,13 +8,41 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/caio-bernardo/dragonite/internal/server"
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter"
+	"github.com/caio-bernardo/dragonite/internal/infrastructure/config"
+	"github.com/caio-bernardo/dragonite/internal/infrastructure/postgres"
+	pgxrepo "github.com/caio-bernardo/dragonite/internal/repository/postgres"
+	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
 func main() {
+	ctx := context.Background()
+
+	// infraestrutura
+	config, err := config.LoadConfig()
+	if err != nil {
+		log.Fatal("Failed to load config: ", err)
+	}
+
+	dbPool, err := postgres.ConnectBD(ctx, config.DatabaseURL)
+	if err != nil {
+		log.Fatal("Failed to connect to database: ", err)
+	}
+	defer dbPool.Close()
+
+	// cria repositorios
+
+	usuarioStore := pgxrepo.NewUsuarioStorage(dbPool)
+	eventoStore := pgxrepo.NewEventoStorage(dbPool)
+	canalStore := pgxrepo.NewCanalStorage(dbPool)
+	systemStore := pgxrepo.NewSystemStorage(dbPool)
+
+	// cria usecases
+	usuarioService := usecase.NewUsuarioService(eventoStore, usuarioStore, canalStore)
+	systemService := usecase.NewHealthService(systemStore)
 
 	// cria servidor
-	server := server.NewServer()
+	server := http_adapter.NewServer(config.ServerPort, config.JWTToken, *usuarioService, *systemService)
 
 	// cria um novo channel do tipo booleano e espaço de memória 1 byte
 	// Um channel é um meio de comunicação entre threads (goroutines)
@@ -25,7 +53,7 @@ func main() {
 
 	// O servidor escuta na porta correspondente e serve as requisições
 	log.Println("Listening on port", server.Addr)
-	err := server.ListenAndServe()
+	err = server.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
 		log.Panic("Server ERROR ", err)
 	}
