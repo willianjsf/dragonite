@@ -13,12 +13,13 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	clientHandler := client.NewHandler(s.usuarioService)
+	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
+
 	// federationHandler := federation.NewHandler()
+	// federationHandler.RegisterRoutes(mux)
 
 	// Registra rotas
 	mux.HandleFunc("GET /health", s.healthHandler)
-	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
-	// federationHandler.RegisterRoutes(mux)
 
 	// wildcard
 	mux.HandleFunc("GET /", s.HelloWorldHandler)

@@ -23,9 +23,15 @@ type UsuarioStorage interface {
 type CanalStorage interface {
 	Create(ctx context.Context, roomID, userID string) (*domain.Canal, error)
 	GetByID(ctx context.Context, canalID string) (*domain.Canal, error)
+	GetJoinRule(ctx context.Context, roomID string) (string, error)
 	GetUserJoinedRooms(ctx context.Context, userID string) ([]string, error)
+	GetUserMembership(ctx context.Context, userID, roomID string) (string, error)
+	GetStateEventID(ctx context.Context, canalID string, stateType, stateKey string) (string, bool)
+	UpsertMembership(ctx context.Context, userID, roomID, membership string) error
+	UpsertCurrentState(ctx context.Context, canalID, stateType, stateKey, eventID string) error
 	GetAllPublic(ctx context.Context, offset, limit int) ([]domain.Canal, error)
 	UpdateForwardExtremities(ctx context.Context, canalID string, extremeties []string) error
+	GetForwardExtremities(ctx context.Context, canalID string) ([]string, error)
 	SaveAlias(ctx context.Context, roomID, fullAlias string) error
 }
 

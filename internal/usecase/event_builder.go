@@ -37,6 +37,13 @@ func buildJoinEvent(canalID string, sender string) *domain.Evento {
 	return newBaseEvent(canalID, sender, string(types.Member), "", content)
 }
 
+func buildLeaveEvent(canalID string, sender string) *domain.Evento {
+	content := map[string]string{
+		"membership": "leave",
+	}
+	return newBaseEvent(canalID, sender, string(types.Member), sender, content)
+}
+
 func buildPowerLevelEvent(canalID string, creatorID string) *domain.Evento {
 	content := map[string]any{
 		"users_default":  0,

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/profile"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
@@ -13,27 +14,29 @@ import (
 )
 
 type Handler struct {
-	userService usecase.UsuarioService
+	userService      usecase.UsuarioService
+	syncService      usecase.SyncService
+	directoryService usecase.DirectoryService
+	profileService   usecase.ProfileService
 }
 
-func NewHandler(userStore usecase.UsuarioService) *Handler {
-	return &Handler{userService: userStore}
+func NewHandler(userStore usecase.UsuarioService, directoryStore usecase.DirectoryService, profileStore usecase.ProfileService, syncStore usecase.SyncService) *Handler {
+	return &Handler{userService: userStore, directoryService: directoryStore, profileService: profileStore, syncService: syncStore}
 }
 
-func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware types.Middleware) {
-
-	// auth := auth.NewHandler(h.userStore, h.deviceStore)
-	// // roomHandler := rooms.NewHandler(h.canalStore, h.usuarioCanalStore, h.eventoStore, os.Getenv("SERVER_NAME"), h.notifier)
-	// profileHandler := profile.NewHandler(h.userStore)
+func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Middleware) {
 
 	mux.HandleFunc("GET /_matrix/client/versions", h.getVersions)
 
 	// autenticação
+	// auth := auth.NewHandler(h.userStore, h.deviceStore)
 	// auth.RegisterRoutes(mux, authMiddleware)
 
 	// chats e manipulação de salas
+	// // roomHandler := rooms.NewHandler(h.canalStore, h.usuarioCanalStore, h.eventoStore, os.Getenv("SERVER_NAME"), h.notifier)
 	// roomHandler.RegisterRoutes(mux, authMiddleware)
-	// profileHandler.RegisterRoutes(mux, authMiddleware)
+	profileHandler := profile.NewHandler(h.profileService)
+	profileHandler.RegisterRoutes(mux, authMiddleware)
 
 	// sincronização de dados
 	mux.Handle("GET /_matrix/v3/client/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil
@@ -73,7 +76,7 @@ func (h *Handler) searchUsers(w http.ResponseWriter, r *http.Request) {
 		limit = 10 // padrão definido pela spec
 	}
 
-	usuarios, err := h.userService.SearchProfiles(r.Context(), req.SearchTerm, limit)
+	usuarios, err := h.directoryService.SearchProfiles(r.Context(), req.SearchTerm, limit)
 	if err != nil {
 		log.Printf("[ERROR] POST /user_directory/search: %v", err)
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Search failed")
@@ -125,7 +128,7 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	events, newToken, err := h.userService.Sync(r.Context(), req.Since, req.Timeout)
+	events, newToken, err := h.syncService.Sync(r.Context(), req.Since, req.Timeout)
 
 	// cria a resposta
 	response := encodeEventsIntoResponse(events, newToken)

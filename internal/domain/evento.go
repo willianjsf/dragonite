@@ -11,7 +11,7 @@ type Evento struct {
 	Content          json.RawMessage `json:"content"`
 	CanalID          string          `json:"canal_id"`
 	Sender           string          `json:"sender"`
-	OrigemServidorTS time.Time       `json:"origem_servidor_ts"`
+	OrigemServidorTS time.Time       `json:"origem_servidor_ts"` // TODO: replace by int64 as matrix requires miliseconds
 
 	StreamOrdering int64 `json:"stream_ordering"`
 

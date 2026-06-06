@@ -11,7 +11,6 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/config"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/postgres"
-	pgxrepo "github.com/caio-bernardo/dragonite/internal/repository/postgres"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
@@ -32,10 +31,10 @@ func main() {
 
 	// cria repositorios
 
-	usuarioStore := pgxrepo.NewUsuarioStorage(dbPool)
-	eventoStore := pgxrepo.NewEventoStorage(dbPool)
-	canalStore := pgxrepo.NewCanalStorage(dbPool)
-	systemStore := pgxrepo.NewSystemStorage(dbPool)
+	usuarioStore := postgres.NewUsuarioStorage(dbPool)
+	eventoStore := postgres.NewEventoStorage(dbPool)
+	canalStore := postgres.NewCanalStorage(dbPool)
+	systemStore := postgres.NewSystemStorage(dbPool)
 
 	// cria usecases
 	usuarioService := usecase.NewUsuarioService(eventoStore, usuarioStore, canalStore)
