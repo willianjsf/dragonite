@@ -23,4 +23,7 @@ type CanalStorage interface {
 }
 
 type EventoStorage interface {
+	CheckNew(ctx context.Context, userID string) (bool, error)
+	GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, domain.SyncToken, error)
+	GetMaxGlobalStreamOrdering(ctx context.Context) (int64, error)
 }
