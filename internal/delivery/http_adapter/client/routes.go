@@ -106,6 +106,8 @@ func (h *Handler) searchUsers(w http.ResponseWriter, r *http.Request) {
 // syncClient lida com a sincronização de dados do cliente com o servidor
 // Pode ser usado para receber um log inicial após o login e sincronização incremental de alterações.
 func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(types.UserIDKey).(string)
+
 	// Constroi o corpo da requisição
 	var req SyncClientRequest
 	req.Since = domain.ParseToken(r.FormValue("since"))
@@ -128,7 +130,7 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	events, newToken, err := h.syncService.Sync(r.Context(), req.Since, req.Timeout)
+	events, newToken, err := h.syncService.SyncClient(r.Context(), userID, req.Since, req.Timeout)
 
 	// cria a resposta
 	response := encodeEventsIntoResponse(events, newToken)

@@ -1,40 +1,56 @@
 package usecase
 
-type SyncService struct{}
+import (
+	"context"
+	"errors"
+	"time"
 
-// userID := ctx.Value(types.UserIDKey).(string)
-// 	// Lógica de Long-Polling
-// 	if since.TimelinePosition != 0 {
-// 		hasEvents, err := u.eventoStore.CheckNew(ctx, userID, since)
-// 		if err != nil {
-// 			return nil, nil, err
-// 		}
+	"github.com/caio-bernardo/dragonite/internal/domain"
+	"github.com/caio-bernardo/dragonite/internal/util"
+)
 
-// 		if !hasEvents && timeout > 0 {
-// 			// sem eventos, long-polling
-// 			ch := u.notifier.Subscribe(userID)
-// 			defer u.notifier.Unsubscribe(userID, ch)
+type SyncService struct {
+	eventStore EventoStorage
+	notifier   Notifier
+}
 
-// 			select {
-// 			case <-ch:
-// 				// Novo evento, pode acessar o banco
-// 			case <-time.After(timeout):
-// 				// Deu timeout antes de um novo evento, cria novo token e retorna
-// 				maxGlobal, _ := u.eventoStore.GetMaxGlobalStreamOrdering(ctx)
-// 				if maxGlobal > since.TimelinePosition {
-// 					since.TimelinePosition = maxGlobal
-// 				}
-// 				return nil, &since, types.ErrTimeout
-// 			case <-ctx.Done():
-// 				// o client se desconectou
-// 				return nil, nil, types.ErrLooseConnection
-// 			}
-// 		}
-// 	}
+func NewSyncService(eventStore EventoStorage, notifier Notifier) *SyncService {
+	return &SyncService{
+		eventStore: eventStore,
+		notifier:   notifier,
+	}
+}
 
-// 	// accesso ao banco
-// 	events, newToken, err := u.eventoStore.GetSince(ctx, userID, since)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
-// 	return events, newToken, nil
+func (s *SyncService) SyncClient(ctx context.Context, userID string, since domain.SyncToken, timeout time.Duration) ([]domain.Evento, domain.SyncToken, error) {
+
+	eventos, err := s.eventStore.GetSince(ctx, userID, since)
+	if err != nil {
+		return nil, since, err
+	}
+
+	// sem long-polling, envia eventos
+	if len(eventos) > 0 || timeout <= 0 {
+		return eventos, util.GenerateNextSinceToken(since, eventos), nil
+	}
+
+	// Long-polling.
+	pollCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// espera por uma notificação do banco
+	err = s.notifier.WaitForEvents(pollCtx, userID)
+	if err != nil {
+		// deu timeout, retornamos apenas uma lista vazia.
+		if errors.Is(err, context.DeadlineExceeded) {
+			return []domain.Evento{}, since, nil
+		}
+		return nil, since, err
+	}
+
+	eventos, err = s.eventStore.GetSince(pollCtx, userID, since)
+	if err != nil {
+		return nil, since, err
+	}
+
+	return eventos, util.GenerateNextSinceToken(since, eventos), nil
+}

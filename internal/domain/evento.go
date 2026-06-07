@@ -2,7 +2,6 @@ package domain
 
 import (
 	"encoding/json"
-	"time"
 )
 
 type Evento struct {
@@ -11,9 +10,9 @@ type Evento struct {
 	Content          json.RawMessage `json:"content"`
 	CanalID          string          `json:"canal_id"`
 	Sender           string          `json:"sender"`
-	OrigemServidorTS time.Time       `json:"origem_servidor_ts"` // TODO: replace by int64 as matrix requires miliseconds
+	OrigemServidorTS int64           `json:"origem_servidor_ts"`
 
-	StreamOrdering int64 `json:"stream_ordering"`
+	StreamOrdering int64 `json:"-"` // NOTE: campo interno, não deve ser exposto ao cliente
 
 	StateKey *string `json:"state_key"`
 	Redacts  string  `json:"redacts"`

@@ -18,7 +18,7 @@ func TestGenerateAccessToken(t *testing.T) {
 	userID := "@alice:example.com"
 	deviceID := "DEVICE123"
 
-	tokenString, expiresMS, err := GenerateAccessToken(userID, deviceID)
+	tokenString, expiresMS, err := GenerateAccessToken(userID, types.JWTSecretKey, deviceID)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

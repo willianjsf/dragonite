@@ -63,7 +63,7 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 		Tipo:             params.EventType,
 		StateKey:         &params.StateKey, // STATE events MUST have a state key (even if it's "")
 		Content:          contentBytes,
-		OrigemServidorTS: time.Now(),
+		OrigemServidorTS: time.Now().UnixMilli(),
 	}
 
 	// 3. Resolve DAG Dependencies (The Timeline and the VIP Pass)
@@ -134,7 +134,7 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 		Tipo:             params.EventType,
 		StateKey:         nil, // REGULAR events strictly have NO state key
 		Content:          contentBytes,
-		OrigemServidorTS: time.Now(),
+		OrigemServidorTS: time.Now().UnixMilli(),
 	}
 
 	// 3. Resolve DAG Dependencies (The VIP Pass and the Timeline)

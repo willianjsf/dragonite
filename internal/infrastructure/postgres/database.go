@@ -7,6 +7,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type PostgresStorage struct {
+	db *pgxpool.Pool
+}
+
+func NewPostgresStorage(dbPool *pgxpool.Pool) *PostgresStorage {
+	return &PostgresStorage{
+		db: dbPool,
+	}
+}
+
 // ConnectBD connects to the PostgreSQL database using the provided database URL and returns a connection pool.
 func ConnectBD(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)

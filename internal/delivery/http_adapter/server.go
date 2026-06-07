@@ -14,16 +14,29 @@ type Server struct {
 	jwtSecret      string
 	usuarioService usecase.UsuarioService
 	systemService  usecase.HealthService
+	dirService     usecase.DirectoryService
+	profileService usecase.ProfileService
+	syncService    usecase.SyncService
 }
 
 // Cria um novo servidor http
-func NewServer(port int, jwtSecret string, usuarioService usecase.UsuarioService, systemService usecase.HealthService) *http.Server {
+func NewServer(port int,
+	jwtSecret string,
+	usuarioService usecase.UsuarioService,
+	systemService usecase.HealthService,
+	dirService usecase.DirectoryService,
+	profileService usecase.ProfileService,
+	syncService usecase.SyncService,
+) *http.Server {
 
 	NewServer := &Server{
 		port:           port,
 		jwtSecret:      jwtSecret,
 		usuarioService: usuarioService,
 		systemService:  systemService,
+		dirService:     dirService,
+		profileService: profileService,
+		syncService:    syncService,
 	}
 
 	// servidor http, com endpoints registrados e timeout para operações R/W

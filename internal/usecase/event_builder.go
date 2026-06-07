@@ -17,7 +17,7 @@ func newBaseEvent(canalID string, sender string, tipo string, stateKey string, c
 		Tipo:             tipo,
 		Content:          bytes,
 		StateKey:         &stateKey,
-		OrigemServidorTS: time.Now(),
+		OrigemServidorTS: time.Now().UnixMilli(),
 	}
 }
 

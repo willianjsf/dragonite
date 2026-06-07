@@ -60,3 +60,30 @@ func HashMatrixEvent(event *domain.Evento) (string, error) {
 
 	return eventID, nil
 }
+
+func GenerateNextSinceToken(
+	since domain.SyncToken,
+	eventos []domain.Evento,
+	// presence []domain.PresenceEvento
+	// receipts []domain.Receipts
+) domain.SyncToken {
+	nextToken := since
+
+	// IMPORTANT: assumindo que os eventos estão ordenados por stream_ordering
+	if len(eventos) > 0 {
+		// Assuming newEvents is ordered chronologically (ORDER BY stream_ordering ASC)
+		// We take the highest stream_ordering from the very last event.
+		ultimoEvento := eventos[len(eventos)-1]
+		nextToken.TimelinePosition = ultimoEvento.StreamOrdering
+	}
+	/*
+		if len(newPresence) > 0 {
+			nextToken.PresencePosition = newPresence[len(newPresence)-1].StreamOrdering
+		}
+		if len(newReceipts) > 0 {
+			nextToken.ReceiptPosition = newReceipts[len(newReceipts)-1].StreamOrdering
+		}
+	*/
+
+	return nextToken
+}

@@ -12,7 +12,7 @@ import (
 func (s *Server) RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
 
-	clientHandler := client.NewHandler(s.usuarioService)
+	clientHandler := client.NewHandler(s.usuarioService, s.dirService, s.profileService, s.syncService)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
 
 	// federationHandler := federation.NewHandler()

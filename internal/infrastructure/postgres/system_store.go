@@ -6,19 +6,9 @@ import (
 	"log"
 	"strconv"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type SystemStorage struct {
-	db *pgxpool.Pool
-}
-
-func NewSystemStorage(db *pgxpool.Pool) *SystemStorage {
-	return &SystemStorage{db: db}
-}
-
-func (s *SystemStorage) PingDB() map[string]string {
+func (s *PostgresStorage) PingDB() map[string]string {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 

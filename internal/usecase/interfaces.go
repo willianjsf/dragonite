@@ -36,11 +36,13 @@ type CanalStorage interface {
 }
 
 type EventoStorage interface {
-	CheckNew(ctx context.Context, userID string) (bool, error)
-	GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, domain.SyncToken, error)
-	GetMaxGlobalStreamOrdering(ctx context.Context) (int64, error)
-
+	// Retorna todos os eventos com base em SyncToken. Retorna uma lista de eventos ordenados com base em StreamOrdering
+	GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error)
 	SaveEvent(ctx context.Context, event *domain.Evento) error
+}
+
+type Notifier interface {
+	WaitForEvents(ctx context.Context, userID string) error
 }
 
 // EventBus implementa um canal de transmissão de eventos publish-subscriber
