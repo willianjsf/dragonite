@@ -33,7 +33,7 @@ func main() {
 	defer dbPool.Close()
 
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", config.RedisHost, config.RedisPort),
+		Addr:     fmt.Sprintf("%s:%d", config.RedisHost, config.RedisPort),
 		Password: config.RedisPassword,
 		DB:       config.RedisDB,
 	})
@@ -45,7 +45,6 @@ func main() {
 	idempoCache := redis_infra.NewIdempotencyCache(redisClient)
 
 	// cria usecases
-	// TODO: implementar storage apropriadamente
 	authService := usecase.NewAuthService(config.JWTToken, config.ServerName, storage, storage)
 	dirService := usecase.NewDirectoryService(storage, storage)
 	fedService := usecase.NewFederationService()
