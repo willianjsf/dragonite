@@ -6,16 +6,19 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/caio-bernardo/dragonite/internal/types"
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
+	"github.com/caio-bernardo/dragonite/internal/usecase"
 	"github.com/caio-bernardo/dragonite/internal/util"
 )
 
 type Handler struct {
-	config *types.ServerConfig
+	sysService *usecase.SystemService
 }
 
-func NewHandler(config *types.ServerConfig) *Handler {
-	return &Handler{config: config}
+func NewHandler(sysService *usecase.SystemService) *Handler {
+	return &Handler{
+		sysService: sysService,
+	}
 }
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
@@ -25,20 +28,20 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
 	res := VersionResponse{}
-	res.Server.Name = h.config.ServerName
-	res.Server.Version = h.config.Version
-	util.WriteJSON(w, http.StatusOK, res)
+	res.Server.Name = h.sysService.GetServerName()
+	res.Server.Version = h.sysService.GetServerVersion()
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) getServerKey(w http.ResponseWriter, r *http.Request) {
 	resp := ServerKeyResponse{}
 
-	resp.ServerName = h.config.ServerName
+	resp.ServerName = h.sysService.GetServerName()
 	// Validade de 1 ano
 	resp.ValidUntilTS = time.Now().Add(365 * 24 * time.Hour).UnixMilli()
-	publicKey := base64.RawStdEncoding.EncodeToString(h.config.PublicKey)
+	publicKey := base64.RawStdEncoding.EncodeToString(h.sysService.GetPublicKey())
 	resp.VerifyKeys = map[string]VerifyKey{
-		h.config.KeyID: {
+		h.sysService.GetServerKeyID(): {
 			Key: publicKey,
 		},
 	}
@@ -46,18 +49,18 @@ func (h *Handler) getServerKey(w http.ResponseWriter, r *http.Request) {
 	// Criptografia
 	canonicalJson, err := util.CanonicalJSON(resp)
 	if err != nil {
-		util.WriteError(w, http.StatusInternalServerError, types.NewErrorResponse(types.M_BAD_JSON, err.Error()))
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_BAD_JSON, err.Error())
 		return
 	}
-	signatureBytes := ed25519.Sign(h.config.PrivateKey, canonicalJson)
+	signatureBytes := ed25519.Sign(h.sysService.GetPrivateKey(), canonicalJson)
 	signatureBase64 := base64.RawStdEncoding.EncodeToString(signatureBytes)
 
 	// add signature
 	resp.Signatures = map[string]map[string]string{
-		h.config.ServerName: {
-			h.config.KeyID: signatureBase64,
+		h.sysService.GetServerName(): {
+			h.sysService.GetServerKeyID(): signatureBase64,
 		},
 	}
 
-	util.WriteJSON(w, http.StatusOK, resp)
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }

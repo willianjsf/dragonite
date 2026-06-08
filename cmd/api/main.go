@@ -36,13 +36,13 @@ func main() {
 
 	// cria usecases
 	// TODO: implementar storage apropriadamente
-	authService := usecase.NewAuthService()
+	authService := usecase.NewAuthService(config.JWTToken, config.ServerName, storage, storage)
 	dirService := usecase.NewDirectoryService(storage, storage)
 	profileService := usecase.NewProfileService(storage)
-	roomAdminService := usecase.NewRoomAdminService(storage)
-	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, , storage)
+	roomAdminService := usecase.NewRoomAdminService(config.ServerName, storage, eventBus, storage, storage, storage)
+	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, storage, storage, storage)
 	syncService := usecase.NewSyncService(storage, notifier)
-	systemService := usecase.NewHealthService(storage)
+	systemService := usecase.NewSystemService(config.ServerName, config.Version, config.PublicKey, config.PrivateKey, config.KeyID, storage)
 	usuarioService := usecase.NewUsuarioService(storage, storage, storage, eventBus)
 
 	// cria servidor

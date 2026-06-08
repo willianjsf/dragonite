@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client"
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/federation"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
@@ -22,7 +23,7 @@ type Server struct {
 	roomAdminService        *usecase.RoomAdminService
 	roomInteractionsService *usecase.RoomInteractionService
 	syncService             *usecase.SyncService
-	systemService           *usecase.HealthService
+	systemService           *usecase.SystemService
 	usuarioService          *usecase.UsuarioService
 }
 
@@ -36,7 +37,7 @@ func NewServer(port int,
 	roomAdminService *usecase.RoomAdminService,
 	roomInteractionsService *usecase.RoomInteractionService,
 	syncService *usecase.SyncService,
-	systemService *usecase.HealthService,
+	systemService *usecase.SystemService,
 	usuarioService *usecase.UsuarioService,
 ) *http.Server {
 
@@ -81,8 +82,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 	)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
 
-	// federationHandler := federation.NewHandler()
-	// federationHandler.RegisterRoutes(mux)
+	federationHandler := federation.NewHandler(s.systemService)
+	federationHandler.RegisterRoutes(mux)
 
 	// Registra rotas
 	mux.HandleFunc("GET /health", s.healthHandler)
