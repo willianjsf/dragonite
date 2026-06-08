@@ -8,15 +8,13 @@ import (
 )
 
 type RoomMembershipService struct {
-	eventBus  EventBus
 	uow       WorkUnit
 	canalRepo CanalStorage
 	eventRepo EventoStorage
 }
 
-func NewRoomMembershipService(eventBus EventBus, canalRepo CanalStorage, eventRepo EventoStorage) *RoomMembershipService {
+func NewRoomMembershipService(canalRepo CanalStorage, eventRepo EventoStorage) *RoomMembershipService {
 	return &RoomMembershipService{
-		eventBus:  eventBus,
 		canalRepo: canalRepo,
 		eventRepo: eventRepo,
 	}
@@ -39,7 +37,11 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 	}
 	leaveEvent.PrevEventos = prevs
 	leaveEvent.AuthEventos = auths
-
+	maxDepth, err := s.eventRepo.GetMaxDepthFromEventos(ctx, prevs)
+	if err != nil {
+		return fmt.Errorf("failed to get event depth: %w", err)
+	}
+	leaveEvent.Depth = maxDepth + 1
 	// 4. Hash it
 	eventID, _ := util.HashMatrixEvent(leaveEvent)
 	leaveEvent.ID = eventID
@@ -47,7 +49,7 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 	// 5. Transactional Save
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
 		// A. Save the event to the DAG
-		if err := s.eventRepo.SaveEvent(txCtx, leaveEvent); err != nil {
+		if err := s.eventRepo.SaveEvento(txCtx, leaveEvent); err != nil {
 			return err
 		}
 
@@ -64,7 +66,7 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 	}
 
 	// 6. Notify local clients (so the room disappears from their UI instantly)
-	s.eventBus.Publish(ctx, roomID, *leaveEvent)
+	// NOTE: client are automatically notified after transaction is completed by notifier package
 	return nil
 }
 
@@ -98,14 +100,18 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 	}
 	joinEvent.PrevEventos = prevs
 	joinEvent.AuthEventos = auths
-
+	maxDepth, err := s.eventRepo.GetMaxDepthFromEventos(ctx, prevs)
+	if err != nil {
+		return fmt.Errorf("failed to get event depth: %w", err)
+	}
+	joinEvent.Depth = maxDepth + 1
 	// 5. Hash it
 	eventID, _ := util.HashMatrixEvent(joinEvent)
 	joinEvent.ID = eventID
 
 	// 6. Transactional Save
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
-		if err := s.eventRepo.SaveEvent(txCtx, joinEvent); err != nil {
+		if err := s.eventRepo.SaveEvento(txCtx, joinEvent); err != nil {
 			return err
 		}
 
@@ -121,7 +127,7 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 	}
 
 	// 7. Notify clients
-	s.eventBus.Publish(ctx, roomID, *joinEvent)
+	// NOTE: client are automatically notified after transaction is completed by notifier package
 	return nil
 }
 

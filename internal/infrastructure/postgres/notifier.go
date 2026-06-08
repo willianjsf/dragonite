@@ -43,6 +43,7 @@ func (p *PostgresNotifier) StartBackgroundListener(ctx context.Context) error {
 		}
 
 		// TODO: considerar eventos de accountData e presence. Mas fazer isso depois
+		// TODO: como notificar de um invite?
 		// notifica todos os usuario que estão no canal em que o evento ocorreu
 		roomID := notif.Payload
 		rows, err := conn.Query(ctx, "SELECT id_usuario FROM Canal_Membership WHERE id_canal = $1 AND membership_type = 'join'", roomID)

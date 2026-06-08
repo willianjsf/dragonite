@@ -10,15 +10,13 @@ import (
 )
 
 type UsuarioService struct {
-	eventBus     EventBus
 	eventoStore  EventoStorage
 	usuarioStore UsuarioStorage
 	canalStore   CanalStorage
 }
 
-func NewUsuarioService(eventoStore EventoStorage, usuarioStore UsuarioStorage, canalStore CanalStorage, eventBus EventBus) *UsuarioService {
+func NewUsuarioService(eventoStore EventoStorage, usuarioStore UsuarioStorage, canalStore CanalStorage) *UsuarioService {
 	return &UsuarioService{
-		eventBus:     eventBus,
 		eventoStore:  eventoStore,
 		usuarioStore: usuarioStore,
 		canalStore:   canalStore,

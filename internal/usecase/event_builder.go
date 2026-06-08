@@ -8,7 +8,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 )
 
-func newBaseEvent(canalID string, sender string, tipo string, stateKey string, content any) *domain.Evento {
+func newBaseEvent(canalID string, sender string, tipo string, stateKey *string, content any) *domain.Evento {
 	bytes, _ := json.Marshal(content)
 
 	return &domain.Evento{
@@ -16,7 +16,7 @@ func newBaseEvent(canalID string, sender string, tipo string, stateKey string, c
 		Sender:           sender,
 		Tipo:             tipo,
 		Content:          bytes,
-		StateKey:         &stateKey,
+		StateKey:         stateKey,
 		OrigemServidorTS: time.Now().UnixMilli(),
 	}
 }
@@ -27,21 +27,21 @@ func buildCreateEvent(canalID string, creatorID string, version string) *domain.
 		"creator":      creatorID,
 		"room_version": version,
 	}
-	return newBaseEvent(canalID, creatorID, string(types.Create), "", content)
+	return newBaseEvent(canalID, creatorID, string(types.Create), new(""), content)
 }
 
 func buildJoinEvent(canalID string, sender string) *domain.Evento {
 	content := map[string]string{
 		"membership": "join",
 	}
-	return newBaseEvent(canalID, sender, string(types.Member), "", content)
+	return newBaseEvent(canalID, sender, string(types.Member), new(""), content)
 }
 
 func buildLeaveEvent(canalID string, sender string) *domain.Evento {
 	content := map[string]string{
 		"membership": "leave",
 	}
-	return newBaseEvent(canalID, sender, string(types.Member), sender, content)
+	return newBaseEvent(canalID, sender, string(types.Member), &sender, content)
 }
 
 func buildPowerLevelEvent(canalID string, creatorID string) *domain.Evento {
@@ -61,42 +61,42 @@ func buildPowerLevelEvent(canalID string, creatorID string) *domain.Evento {
 			"m.room.power_levels": 100, // Only the admin can change power levels
 		},
 	}
-	return newBaseEvent(canalID, creatorID, string(types.PowerLevels), "", content)
+	return newBaseEvent(canalID, creatorID, string(types.PowerLevels), new(""), content)
 }
 
 func buildJoinRulesEvent(canalID, creatorID, rule string) *domain.Evento {
 	content := map[string]string{
 		"join_rules": rule,
 	}
-	return newBaseEvent(canalID, creatorID, string(types.JoinRules), "", content)
+	return newBaseEvent(canalID, creatorID, string(types.JoinRules), new(""), content)
 }
 
 func buildNameEvent(canalID, sender, name string) *domain.Evento {
 	content := map[string]string{
 		"name": name,
 	}
-	return newBaseEvent(canalID, sender, string(types.Name), "", content)
+	return newBaseEvent(canalID, sender, string(types.Name), new(""), content)
 }
 
 func buildTopicEvent(canalID, sender, topic string) *domain.Evento {
 	content := map[string]string{
 		"topic": topic,
 	}
-	return newBaseEvent(canalID, sender, string(types.Topic), "", content)
+	return newBaseEvent(canalID, sender, string(types.Topic), new(""), content)
 }
 
 func buildInviteEvent(canalID, sender, invitee string) *domain.Evento {
 	content := map[string]string{
 		"membership": "invite",
 	}
-	return newBaseEvent(canalID, sender, string(types.Member), invitee, content)
+	return newBaseEvent(canalID, sender, string(types.Member), &invitee, content)
 }
 
 func buildAliasEvent(canalID, sender, alias string) *domain.Evento {
 	content := map[string]string{
 		"alias": alias,
 	}
-	return newBaseEvent(canalID, sender, string(types.CanonicalAlias), "", content)
+	return newBaseEvent(canalID, sender, string(types.CanonicalAlias), new(""), content)
 }
 
 // isProtectedGenesisEvent prevents clients from overriding the foundational DAG.
@@ -135,7 +135,7 @@ func buildInitialStateEvents(roomID, creatorID string, rawEvents []StateEventPar
 			roomID,
 			creatorID, // The creator is ALWAYS the sender of initial state
 			reqEv.Type,
-			stateKey,
+			&stateKey,
 			reqEv.Content,
 		)
 

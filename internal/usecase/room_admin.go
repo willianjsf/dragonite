@@ -32,17 +32,15 @@ type RoomAdminService struct {
 	serverName   string
 	uow          WorkUnit
 	fedService   FederationService
-	eventBus     EventBus
 	usuarioStore UsuarioStorage
 	canalStore   CanalStorage
 	eventoStore  EventoStorage
 }
 
-func NewRoomAdminService(serverName string, fedService FederationService, eventBus EventBus, canalStore CanalStorage, eventoStore EventoStorage, usuarioStore UsuarioStorage) *RoomAdminService {
+func NewRoomAdminService(serverName string, fedService FederationService, canalStore CanalStorage, eventoStore EventoStorage, usuarioStore UsuarioStorage) *RoomAdminService {
 	return &RoomAdminService{
 		serverName:   serverName,
 		fedService:   fedService,
-		eventBus:     eventBus,
 		usuarioStore: usuarioStore,
 		canalStore:   canalStore,
 		eventoStore:  eventoStore,
@@ -116,7 +114,7 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 
 		// sava cada um dos eventos
 		for _, event := range eventsToSave {
-			if err := s.eventoStore.SaveEvent(txCtx, event); err != nil {
+			if err := s.eventoStore.SaveEvento(txCtx, event); err != nil {
 				return err
 			}
 		}
@@ -143,17 +141,13 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 		return nil, err
 	}
 
-	// publica os eventos para usuarios escutando este canal
-	for _, ev := range eventsToSave {
-		s.eventBus.Publish(ctx, roomID, *ev)
-	}
+	// NOTE: eventos publicados automaticamente para usuarios escutando este canal
 
 	// publica convites diretamente aos usuários
 	for invitee, inviteEv := range inviteEvents {
+		// notifica servidores remotos
 		if util.IsRemoteUser(invitee, s.serverName) {
 			_ = s.fedService.QueueOutgoing(ctx, inviteEv)
-		} else {
-			s.eventBus.PublishToUser(ctx, invitee, inviteEv)
 		}
 	}
 

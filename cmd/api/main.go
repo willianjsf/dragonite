@@ -41,7 +41,6 @@ func main() {
 	// storage implementa TODAS as funções que cada interface requer
 	storage := postgres.NewPostgresStorage(dbPool)
 	notifier := postgres.NewPostgresNotifier(dbPool)
-	// eventBus := eventbus.NewEventBus()
 
 	idempoCache := redis_infra.NewIdempotencyCache(redisClient)
 
@@ -49,12 +48,13 @@ func main() {
 	// TODO: implementar storage apropriadamente
 	authService := usecase.NewAuthService(config.JWTToken, config.ServerName, storage, storage)
 	dirService := usecase.NewDirectoryService(storage, storage)
+	fedService := usecase.NewFederationService()
 	profileService := usecase.NewProfileService(storage)
-	roomAdminService := usecase.NewRoomAdminService(config.ServerName, storage, eventBus, storage, storage, storage)
-	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, storage, storage, storage)
+	roomAdminService := usecase.NewRoomAdminService(config.ServerName, fedService, storage, storage, storage)
+	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, fedService, storage)
 	syncService := usecase.NewSyncService(storage, notifier)
 	systemService := usecase.NewSystemService(config.ServerName, config.Version, config.PublicKey, config.PrivateKey, config.KeyID, storage)
-	usuarioService := usecase.NewUsuarioService(storage, storage, storage, eventBus)
+	usuarioService := usecase.NewUsuarioService(storage, storage, storage)
 
 	// cria servidor
 	server := http_adapter.NewServer(config.ServerPort, config.JWTToken,

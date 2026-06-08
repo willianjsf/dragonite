@@ -26,9 +26,13 @@ type UsuarioStorage interface {
 type CanalStorage interface {
 	Create(ctx context.Context, roomID, userID string) (*domain.Canal, error)
 	GetByID(ctx context.Context, canalID string) (*domain.Canal, error)
+	// Get join_rules from a room
 	GetJoinRule(ctx context.Context, roomID string) (string, error)
+	// Get all room ids joined by a user
 	GetUserJoinedRooms(ctx context.Context, userID string) ([]string, error)
+	// Get a user membership state
 	GetUserMembership(ctx context.Context, userID, roomID string) (string, error)
+	// Get a room state event ID
 	GetStateEventID(ctx context.Context, canalID string, stateType, stateKey string) (string, bool)
 	UpsertMembership(ctx context.Context, userID, roomID, membership string) error
 	UpsertCurrentState(ctx context.Context, canalID, stateType, stateKey, eventID string) error
@@ -41,7 +45,8 @@ type CanalStorage interface {
 type EventoStorage interface {
 	// Retorna todos os eventos com base em SyncToken. Retorna uma lista de eventos ordenados com base em StreamOrdering
 	GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error)
-	SaveEvent(ctx context.Context, event *domain.Evento) error
+	GetMaxDepthFromEventos(ctx context.Context, eventIDs []string) (int64, error)
+	SaveEvento(ctx context.Context, event *domain.Evento) error
 }
 
 type DeviceStorage interface {
@@ -61,13 +66,6 @@ type DirectoryStorage interface {
 
 type Notifier interface {
 	WaitForEvents(ctx context.Context, userID string) error
-}
-
-// EventBus implementa um canal de transmissão de eventos publish-subscriber
-type EventBus interface {
-	Publish(ctx context.Context, canal_id string, event domain.Evento)
-	PublishToUser(ctx context.Context, userID string, event domain.Evento)
-	Subscribe(ctx context.Context, canal_id string) (<-chan *domain.Evento, func())
 }
 
 // Executes operations inside a transaction. Commit if succeeds or rollback in failure

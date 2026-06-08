@@ -9,6 +9,7 @@ import (
 
 // genesisState simulates the room's database state during creation.
 type genesisState struct {
+	latestDepth   int64
 	latestEventID string            // Tracks the tip of the DAG (PrevEvents)
 	authCache     map[string]string // Key: "type|state_key", Value: EventID
 }
@@ -71,10 +72,12 @@ func linkAndHashGenesis(events []*domain.Evento) error {
 		if i == 0 {
 			// The absolute beginning of time
 			ev.PrevEventos = []string{}
+			ev.Depth = 0
 		} else {
 			// Point strictly to the event generated immediately before this one,
 			// creating a perfect, single-file line (linear DAG).
 			ev.PrevEventos = []string{state.latestEventID}
+			ev.Depth = state.latestDepth + 1
 		}
 
 		// ---------------------------------------------------
@@ -95,6 +98,7 @@ func linkAndHashGenesis(events []*domain.Evento) error {
 		// STEP 4: Update the Tracker for the Next Loop!
 		// ---------------------------------------------------
 		state.latestEventID = eventID
+		state.latestDepth = ev.Depth
 
 		// If this is a state event, cache it so future events in this loop can use it
 		if ev.StateKey != nil {

@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS Aresta_Evento (
     prev_evento_id VARCHAR(255) NOT NULL,  -- The older event it points to
     is_state BOOLEAN DEFAULT FALSE,       -- Optimization: Is the older event a state event?
 
-    PRIMARY KEY (id_canal, prev_evento_id),
+    PRIMARY KEY (id_evento, prev_evento_id),
 
     -- Ensure we don't have orphaned edges
     CONSTRAINT fk_id_evento FOREIGN KEY (id_evento) REFERENCES Evento(id_evento) ON DELETE CASCADE

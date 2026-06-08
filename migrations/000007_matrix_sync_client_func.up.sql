@@ -8,6 +8,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trigger_notify_new_evento
-AFTER INSERT ON Evento
+AFTER INSERT OR UPDATE ON Evento
 FOR EACH ROW
 EXECUTE FUNCTION notify_matrix_sync_by_room();

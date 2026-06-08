@@ -14,16 +14,14 @@ import (
 type RoomInteractionService struct {
 	canalRepo  CanalStorage
 	eventoRepo EventoStorage
-	eventBus   EventBus
 	fedService FederationService
 	uow        WorkUnit
 }
 
-func NewRoomInteractionService(canalRepo CanalStorage, eventoRepo EventoStorage, eventBus EventBus, fedService FederationService, uow WorkUnit) *RoomInteractionService {
+func NewRoomInteractionService(canalRepo CanalStorage, eventoRepo EventoStorage, fedService FederationService, uow WorkUnit) *RoomInteractionService {
 	return &RoomInteractionService{
 		canalRepo:  canalRepo,
 		eventoRepo: eventoRepo,
-		eventBus:   eventBus,
 		fedService: fedService,
 		uow:        uow,
 	}
@@ -50,6 +48,7 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 	if err != nil || status != "join" {
 		return "", types.ErrForbidden
 	}
+	// TODO: check powerlevel and if statekey starts with @ matches sender
 
 	// 2. Build the Base State Event
 	contentBytes, err := json.Marshal(params.Content)
@@ -74,6 +73,12 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 	newEvent.PrevEventos = prevs
 	newEvent.AuthEventos = auths
 
+	maxDepth, err := s.eventoRepo.GetMaxDepthFromEventos(ctx, prevs)
+	if err != nil {
+		return "", fmt.Errorf("failed to get event depth: %w", err)
+	}
+	newEvent.Depth = maxDepth + 1
+
 	// 4. Cryptographic Hashing
 	eventID, err := util.HashMatrixEvent(newEvent)
 	if err != nil {
@@ -84,7 +89,8 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 	// 5. ATOMIC DATABASE TRANSACTION (The 3-Step State Update)
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
 		// A. Save the historical event payload to the DAG
-		if err := s.eventoRepo.SaveEvent(txCtx, newEvent); err != nil {
+		// NOTE: should be upsert, if room_id, event_type and state_key all match, update, else insert
+		if err := s.eventoRepo.SaveEvento(txCtx, newEvent); err != nil {
 			return err
 		}
 
@@ -106,8 +112,8 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 	}
 
 	// 6. Post-Transaction Side Effects
-	// Wake up local users listening on /sync so their UI updates instantly
-	s.eventBus.Publish(ctx, params.RoomID, *newEvent)
+	// NOTE: Wake up local users listening on /sync so their UI updates instantly
+	// Postgres handles notification on room level
 
 	// Queue the state change to be pushed to remote servers
 	_ = s.fedService.QueueOutgoing(ctx, *newEvent)
@@ -145,6 +151,12 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 	newEvent.PrevEventos = prevs
 	newEvent.AuthEventos = auths
 
+	maxDepth, err := s.eventoRepo.GetMaxDepthFromEventos(ctx, prevs)
+	if err != nil {
+		return "", fmt.Errorf("failed to get event depth: %w", err)
+	}
+	newEvent.Depth = maxDepth + 1
+
 	// 4. Cryptographic Hashing
 	eventID, err := util.HashMatrixEvent(newEvent)
 	if err != nil {
@@ -155,7 +167,7 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 	// 5. ATOMIC DATABASE TRANSACTION
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
 		// A. Save the event payload
-		if err := s.eventoRepo.SaveEvent(txCtx, newEvent); err != nil {
+		if err := s.eventoRepo.SaveEvento(txCtx, newEvent); err != nil {
 			return err
 		}
 
@@ -174,7 +186,7 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 
 	// 6. Post-Transaction Side Effects (Waking up the network)
 	// Wake up local users listening on /sync
-	s.eventBus.Publish(ctx, params.RoomID, *newEvent)
+	// NOTE: postgres handles notification on room level
 
 	// Queue the event to be pushed to remote servers
 	_ = s.fedService.QueueOutgoing(ctx, *newEvent)
