@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os/signal"
@@ -11,7 +12,9 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/config"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/postgres"
+	"github.com/caio-bernardo/dragonite/internal/infrastructure/redis_infra"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -29,10 +32,18 @@ func main() {
 	}
 	defer dbPool.Close()
 
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%s", config.RedisHost, config.RedisPort),
+		Password: config.RedisPassword,
+		DB:       config.RedisDB,
+	})
+
 	// storage implementa TODAS as funções que cada interface requer
 	storage := postgres.NewPostgresStorage(dbPool)
 	notifier := postgres.NewPostgresNotifier(dbPool)
 	// eventBus := eventbus.NewEventBus()
+
+	idempoCache := redis_infra.NewIdempotencyCache(redisClient)
 
 	// cria usecases
 	// TODO: implementar storage apropriadamente
@@ -50,6 +61,7 @@ func main() {
 		config.ServerName, authService, dirService, profileService,
 		roomAdminService, roomInteractionsService, syncService, systemService,
 		usuarioService,
+		idempoCache,
 	)
 
 	// cria um novo channel do tipo booleano e espaço de memória 1 byte

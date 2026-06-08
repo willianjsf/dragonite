@@ -11,14 +11,18 @@ import (
 )
 
 type AppConfig struct {
-	ServerName  string `env:"SERVER_NAME"`
-	ServerPort  int    `env:"BACKEND_PORT"`
-	Version     string `env:"VERSION"`
-	JWTToken    string `env:"JWT_TOKEN"`
-	KeyID       string `env:"KEY_ID"`
-	DatabaseURL string `env:"DATABASE_URL"`
-	PublicKey   ed25519.PublicKey
-	PrivateKey  ed25519.PrivateKey
+	ServerName    string `env:"SERVER_NAME"`
+	ServerPort    int    `env:"BACKEND_PORT"`
+	Version       string `env:"VERSION"`
+	JWTToken      string `env:"JWT_TOKEN"`
+	KeyID         string `env:"KEY_ID"`
+	DatabaseURL   string `env:"DATABASE_URL"`
+	RedisHost     string `env:"REDIS_HOST"`
+	RedisPort     int    `env:"REDIS_PORT"`
+	RedisPassword string `env:"REDIS_PASSWORD"`
+	RedisDB       int
+	PublicKey     ed25519.PublicKey
+	PrivateKey    ed25519.PrivateKey
 }
 
 func LoadConfig() (*AppConfig, error) {
@@ -46,20 +50,41 @@ func LoadConfig() (*AppConfig, error) {
 		return nil, errors.New("JWT_TOKEN variable is not set")
 	}
 
+	if os.Getenv("REDIS_HOST") == "" {
+		return nil, errors.New("REDIS_HOST variable is not set")
+	}
+
+	if os.Getenv("REDIS_PORT") == "" {
+		return nil, errors.New("REDIS_PORT variable is not set")
+	}
+
+	redis_port, err := strconv.Atoi(os.Getenv("REDIS_PORT"))
+	if err != nil {
+		return nil, errors.New("REDIS_PORT is not a valid integer")
+	}
+
+	if os.Getenv("REDIS_PASSWORD") == "" {
+		return nil, errors.New("REDIS_PASSWORD variable is not set")
+	}
+
 	key, pubKey, privKey, err := util.GenerateServerKey(os.Getenv("SERVER_NAME"), os.Getenv("VERSION"))
 	if err != nil {
 		return nil, err
 	}
 
 	config := AppConfig{
-		ServerName:  os.Getenv("SERVER_NAME"),
-		ServerPort:  port,
-		Version:     os.Getenv("VERSION"),
-		JWTToken:    os.Getenv("JWT_TOKEN"),
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		KeyID:       key,
-		PublicKey:   pubKey,
-		PrivateKey:  privKey,
+		ServerName:    os.Getenv("SERVER_NAME"),
+		ServerPort:    port,
+		Version:       os.Getenv("VERSION"),
+		JWTToken:      os.Getenv("JWT_TOKEN"),
+		DatabaseURL:   os.Getenv("DATABASE_URL"),
+		RedisHost:     os.Getenv("REDIS_HOST"),
+		RedisPort:     redis_port,
+		RedisPassword: os.Getenv("REDIS_PASSWORD"),
+		RedisDB:       0,
+		KeyID:         key,
+		PublicKey:     pubKey,
+		PrivateKey:    privKey,
 	}
 
 	return &config, nil

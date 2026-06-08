@@ -12,6 +12,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
+	"github.com/caio-bernardo/dragonite/internal/infrastructure"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
@@ -23,6 +24,7 @@ type Handler struct {
 	authService      *usecase.AuthService
 	roomAdmin        *usecase.RoomAdminService
 	roomInteractions *usecase.RoomInteractionService
+	idempotencyCache infrastructure.IdempotencyCache
 	serverName       string
 }
 
@@ -35,6 +37,7 @@ func NewHandler(
 	syncStore *usecase.SyncService,
 	roomAdmin *usecase.RoomAdminService,
 	roomInteractions *usecase.RoomInteractionService,
+	idempotencyCache infrastructure.IdempotencyCache,
 ) *Handler {
 	return &Handler{
 		serverName:       serverName,
@@ -45,6 +48,7 @@ func NewHandler(
 		roomAdmin:        roomAdmin,
 		roomInteractions: roomInteractions,
 		authService:      authService,
+		idempotencyCache: idempotencyCache,
 	}
 }
 
@@ -57,7 +61,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	auth.RegisterRoutes(mux, authMiddleware)
 
 	// chats e manipulação de salas
-	roomHandler := rooms.NewHandler(h.serverName, h.directoryService, h.roomAdmin, h.roomInteractions)
+	roomHandler := rooms.NewHandler(h.serverName, h.directoryService, h.roomAdmin, h.roomInteractions, h.idempotencyCache)
 	roomHandler.RegisterRoutes(mux, authMiddleware)
 
 	profileHandler := profile.NewHandler(h.profileService)

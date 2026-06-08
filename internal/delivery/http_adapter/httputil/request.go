@@ -46,3 +46,19 @@ func GetClientIP(r *http.Request) string {
 
 	return ip
 }
+
+// Extrai o token the autenticacao do usuário
+func ExtractBearerToken(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+
+	// The Authorization header is expected to be in the format "Bearer <token>"
+	splitAuth := strings.Split(authHeader, " ")
+	if len(splitAuth) != 2 || splitAuth[0] != "Bearer" {
+		return ""
+	}
+
+	return splitAuth[1]
+}

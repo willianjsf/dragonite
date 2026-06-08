@@ -14,6 +14,7 @@ type SearchFilter struct {
 }
 
 type UsuarioStorage interface {
+	// Cria um novo domain.Usuario, acompanhado de um domain.Profile
 	CreateUsuarioAndProfile(ctx context.Context, userProps domain.Usuario) (*domain.Usuario, error)
 	GetUsuarioByID(ctx context.Context, userID string) (*domain.Usuario, error)
 	GetProfileByID(ctx context.Context, userID string) (*domain.Profile, error)
@@ -50,6 +51,14 @@ type DeviceStorage interface {
 	UpdateDevice(ctx context.Context, device *domain.Dispositivo) error
 }
 
+type SystemStorage interface {
+	PingDB() map[string]string
+}
+
+type DirectoryStorage interface {
+	SearchDirectory(ctx context.Context, term string, limit, offset int) ([]domain.PublicRoomEntry, int, error)
+}
+
 type Notifier interface {
 	WaitForEvents(ctx context.Context, userID string) error
 }
@@ -59,9 +68,6 @@ type EventBus interface {
 	Publish(ctx context.Context, canal_id string, event domain.Evento)
 	PublishToUser(ctx context.Context, userID string, event domain.Evento)
 	Subscribe(ctx context.Context, canal_id string) (<-chan *domain.Evento, func())
-}
-type DirectoryStorage interface {
-	SearchDirectory(ctx context.Context, term string, limit, offset int) ([]domain.PublicRoomEntry, int, error)
 }
 
 // Executes operations inside a transaction. Commit if succeeds or rollback in failure

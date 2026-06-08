@@ -1,9 +1,5 @@
 package usecase
 
-type SystemStorage interface {
-	PingDB() map[string]string
-}
-
 type SystemService struct {
 	serverName       string
 	serverVersion    string

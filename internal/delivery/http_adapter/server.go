@@ -9,6 +9,7 @@ import (
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/federation"
+	"github.com/caio-bernardo/dragonite/internal/infrastructure"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
@@ -25,6 +26,7 @@ type Server struct {
 	syncService             *usecase.SyncService
 	systemService           *usecase.SystemService
 	usuarioService          *usecase.UsuarioService
+	idempotencyCache        infrastructure.IdempotencyCache
 }
 
 // Cria um novo servidor http
@@ -39,6 +41,7 @@ func NewServer(port int,
 	syncService *usecase.SyncService,
 	systemService *usecase.SystemService,
 	usuarioService *usecase.UsuarioService,
+	idempotencyCache infrastructure.IdempotencyCache,
 ) *http.Server {
 
 	NewServer := &Server{
@@ -52,6 +55,7 @@ func NewServer(port int,
 		syncService:             syncService,
 		systemService:           systemService,
 		usuarioService:          usuarioService,
+		idempotencyCache:        idempotencyCache,
 	}
 
 	// servidor http, com endpoints registrados e timeout para operações R/W
@@ -79,6 +83,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		s.syncService,
 		s.roomAdminService,
 		s.roomInteractionsService,
+		s.idempotencyCache,
 	)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
 

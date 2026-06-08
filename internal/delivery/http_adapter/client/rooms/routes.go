@@ -6,9 +6,11 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
+	"github.com/caio-bernardo/dragonite/internal/infrastructure"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 	"github.com/caio-bernardo/dragonite/internal/util"
 )
@@ -20,15 +22,19 @@ type Handler struct {
 	roomAdminService      *usecase.RoomAdminService
 	roomMembershipService *usecase.RoomMembershipService
 	roomInteractions      *usecase.RoomInteractionService
+	idempotencyCache      infrastructure.IdempotencyCache
 	serverName            string
 }
 
-func NewHandler(serverName string, directoryService *usecase.DirectoryService, roomAdminService *usecase.RoomAdminService, roomInteractions *usecase.RoomInteractionService) *Handler {
+func NewHandler(serverName string, directoryService *usecase.DirectoryService,
+	roomAdminService *usecase.RoomAdminService, roomInteractions *usecase.RoomInteractionService,
+	idempotencyCache infrastructure.IdempotencyCache) *Handler {
 	return &Handler{
 		serverName:       serverName,
 		directoryService: directoryService,
 		roomAdminService: roomAdminService,
 		roomInteractions: roomInteractions,
+		idempotencyCache: idempotencyCache,
 	}
 }
 
@@ -201,6 +207,8 @@ func (h *Handler) putSendEvent(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
 	defer cancel()
 
+	accessToken := httputil.ExtractBearerToken(r)
+
 	// 1. Identity Extraction
 	userID, ok := ctx.Value(types.UserIDKey).(string)
 	if !ok || userID == "" {
@@ -211,10 +219,18 @@ func (h *Handler) putSendEvent(w http.ResponseWriter, r *http.Request) {
 	// 2. Path Parameter Extraction
 	roomID := r.PathValue("roomId")
 	eventType := r.PathValue("eventType")
-	// txnID := r.PathValue("txnId") // We will discuss this in a moment!
+	txnID := r.PathValue("txnId")
+	endpoint := r.URL.Path
 
 	if roomID == "" || eventType == "" {
 		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing path parameters")
+		return
+	}
+
+	if eventID, exists := h.idempotencyCache.Get(ctx, accessToken, endpoint, txnID); exists {
+		httputil.WriteJSON(w, http.StatusOK, map[string]string{
+			"event_id": eventID,
+		})
 		return
 	}
 
@@ -243,6 +259,9 @@ func (h *Handler) putSendEvent(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to send event")
 		return
 	}
+
+	// cache this event for 24hours
+	_ = h.idempotencyCache.Set(ctx, accessToken, endpoint, txnID, eventID, 24*time.Hour)
 
 	// 6. Return Success
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{
