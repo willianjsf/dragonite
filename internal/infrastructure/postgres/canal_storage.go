@@ -41,9 +41,36 @@ func (s *PostgresStorage) GetByID(ctx context.Context, canalID string) (*domain.
 	if err == nil {
 		canal.ForwardExtremeties = extremeties
 	}
-	// TODO: fill Canal.EstadoAtual
+	estadoAtual, err := s.GetCanalEstadoAtual(ctx, canalID)
+	if err == nil {
+		canal.EstadoAtual = estadoAtual
+	}
 
 	return &canal, nil
+}
+
+func (s *PostgresStorage) GetCanalEstadoAtual(ctx context.Context, canalID string) ([]domain.StateEntry, error) {
+	rows, err := s.db.Query(ctx,
+		"SELECT id_evento, tipo, content FROM Canal_Estado_Atual WHERE id_canal = $1",
+		canalID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get canal estado atual: %w", err)
+	}
+	defer rows.Close()
+
+	var estadoAtual []domain.StateEntry
+	for rows.Next() {
+		var entry domain.StateEntry
+		if err := rows.Scan(&entry.IDEvento, &entry.Type, &entry.StateKey); err != nil {
+			return nil, fmt.Errorf("failed to scan state entry: %w", err)
+		}
+		estadoAtual = append(estadoAtual, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return estadoAtual, nil
 }
 
 func (s *PostgresStorage) GetJoinRule(ctx context.Context, roomID string) (string, error) {
