@@ -56,7 +56,7 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 			return err
 		}
 		// Update DAG Extremities
-		if err := s.canalRepo.UpdateForwardExtremities(txCtx, roomID, []string{eventID}); err != nil {
+		if err := s.canalRepo.UpdateForwardExtremities(txCtx, roomID, eventID, prevs); err != nil {
 			return err
 		}
 
@@ -128,7 +128,7 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 		}
 
 		// Update DAG Extremities
-		if err := s.canalRepo.UpdateForwardExtremities(txCtx, roomID, []string{eventID}); err != nil {
+		if err := s.canalRepo.UpdateForwardExtremities(txCtx, roomID, eventID, prevs); err != nil {
 			return err
 		}
 

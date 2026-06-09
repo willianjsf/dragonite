@@ -128,7 +128,7 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 
 		// atualiza a extremidade do último evento
 		lastEvent := eventsToSave[len(eventsToSave)-1]
-		if err := s.canalStore.UpdateForwardExtremities(txCtx, roomID, []string{lastEvent.ID}); err != nil {
+		if err := s.canalStore.UpdateForwardExtremities(txCtx, roomID, lastEvent.ID, lastEvent.PrevEventos); err != nil {
 			return err
 		}
 

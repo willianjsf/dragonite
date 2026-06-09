@@ -10,15 +10,21 @@ import (
 )
 
 func (s *PostgresStorage) GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
-	rows, err := s.db.Query(ctx, `
-	    SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key
-		FROM Evento e
-		INNER JOIN Canal_Membership m ON e.id_canal = m.id_canal
-		WHERE m.id_usuario = $1 AND m.membership_type IN ('join', 'invite') AND e.stream_ordering > $2
-		ORDER BY e.stream_ordering ASC
-		`,
-		userID,
-		since.TimelinePosition)
+	// Todos os eventos de canais os quais o usuário pertence + eventos sobre o próprio usuário
+	query := `
+		SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key
+		FROM Evento
+		WHERE stream_ordering > $2 AND (
+			id_canal IN (
+				SELECT id_canal FROM Canal_Membership
+				WHERE id_usuario = $1 AND membership_type IN ('join', 'invite')
+			)
+			OR
+			(tipo = 'm.room.member' AND state_key = $1)
+		)
+		ORDER BY stream_ordering ASC
+	`
+	rows, err := s.db.Query(ctx, query, userID, since.TimelinePosition)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get events: %w", err)
 	}

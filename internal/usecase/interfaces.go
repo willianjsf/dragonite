@@ -37,7 +37,7 @@ type CanalStorage interface {
 	UpsertMembership(ctx context.Context, roomID, userID, membership string) error
 	UpsertCurrentState(ctx context.Context, canalID, stateType, stateKey, eventID string) error
 	GetAllPublic(ctx context.Context, offset, limit int) ([]domain.Canal, error)
-	UpdateForwardExtremities(ctx context.Context, canalID string, extremeties []string) error
+	UpdateForwardExtremities(ctx context.Context, canalID string, newEventID string, prevEvents []string) error
 	GetForwardExtremities(ctx context.Context, canalID string) ([]string, error)
 	SaveAlias(ctx context.Context, roomID, fullAlias string) error
 }

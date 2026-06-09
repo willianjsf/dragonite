@@ -6,6 +6,7 @@ import (
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/jackc/pgx/v5"
+	"github.com/lib/pq"
 )
 
 func (s *PostgresStorage) Create(ctx context.Context, roomID, userID string) (*domain.Canal, error) {
@@ -200,21 +201,27 @@ func (s *PostgresStorage) GetAllPublic(ctx context.Context, offset, limit int) (
 	return canals, nil
 }
 
-func (s *PostgresStorage) UpdateForwardExtremities(ctx context.Context, canalID string, extremeties []string) error {
+func (s *PostgresStorage) UpdateForwardExtremities(ctx context.Context, canalID string, eventID string, prevEvents []string) error {
 	db := getTxOrPool(ctx, s.db)
-	// TODO: filtrar por prevEventos
-	_, err := db.Exec(ctx, "DELETE FROM Canal_Extremidades WHERE id_canal = $1", canalID)
-	if err != nil {
-		return fmt.Errorf("failed to delete old extremities: %w", err)
+	// Apaga apenas extremidades antigas do DAG
+	if len(prevEvents) > 0 {
+		_, err := db.Exec(ctx, `
+				DELETE FROM Canal_Forward_Extremities
+				WHERE id_canal = $1 AND id_evento = ANY($2)
+			`, canalID, pq.Array(prevEvents))
+		if err != nil {
+			return fmt.Errorf("failed to delete old extremities: %w", err)
+		}
 	}
 
-	for _, eventID := range extremeties {
-		_, err := db.Exec(ctx,
-			"INSERT INTO Canal_Extremidades (id_canal, id_evento) VALUES ($1, $2)",
-			canalID, eventID)
-		if err != nil {
-			return fmt.Errorf("failed to insert extremity: %w", err)
-		}
+	// Insere o novo evento como a nova ponta livre do DAG
+	_, err := db.Exec(ctx, `
+			INSERT INTO Canal_Forward_Extremities (id_canal, id_evento)
+			VALUES ($1, $2)
+			ON CONFLICT DO NOTHING
+		`, canalID, eventID)
+	if err != nil {
+		return fmt.Errorf("failed to insert new extremity: %w", err)
 	}
 
 	return nil

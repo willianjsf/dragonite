@@ -48,7 +48,7 @@ func (f *fakeCanalStore) GetAllPublic(ctx context.Context, offset, limit int) ([
 	return nil, nil
 }
 
-func (f *fakeCanalStore) UpdateForwardExtremities(ctx context.Context, canalID string, extremeties []string) error {
+func (f *fakeCanalStore) UpdateForwardExtremities(ctx context.Context, canalID string, eventID string, prevs []string) error {
 	return nil
 }
 

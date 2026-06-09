@@ -96,7 +96,7 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 		}
 
 		// B. Update the DAG Extremities (Move the timeline forward)
-		if err := s.canalRepo.UpdateForwardExtremities(txCtx, params.RoomID, []string{eventID}); err != nil {
+		if err := s.canalRepo.UpdateForwardExtremities(txCtx, params.RoomID, eventID, prevs); err != nil {
 			return err
 		}
 
@@ -174,7 +174,7 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 
 		// B. Update the DAG Extremities
 		// This query deletes the old extremities (prevs) and inserts the new EventID
-		if err := s.canalRepo.UpdateForwardExtremities(txCtx, params.RoomID, []string{eventID}); err != nil {
+		if err := s.canalRepo.UpdateForwardExtremities(txCtx, params.RoomID, eventID, prevs); err != nil {
 			return err
 		}
 
