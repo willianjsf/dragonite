@@ -27,7 +27,7 @@ func TestGenerateAccessToken(t *testing.T) {
 	}
 
 	parsedToken, err := jwt.ParseWithClaims(tokenString, &types.MatrixClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return JWTSecretKey, nil
+		return []byte(JWTSecretKey), nil
 	})
 	if err != nil {
 		t.Fatalf("failed to parse token: %v", err)

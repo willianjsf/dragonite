@@ -28,7 +28,7 @@ func GenerateAccessToken(userID, deviceID, jwtToken, serverName string) (string,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(jwtToken)
+	tokenString, err := token.SignedString([]byte(jwtToken))
 
 	// Retorna o token e o tempo de expiração em milissegundos para a resposta
 	expiresInMs := time.Until(expirationTime).Milliseconds()
