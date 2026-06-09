@@ -71,7 +71,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	profileHandler.RegisterRoutes(mux, authMiddleware)
 
 	// sincronização de dados
-	mux.Handle("GET /_matrix/v3/client/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil
+	mux.Handle("GET /_matrix/client/v3/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil
 	// busca de usuários
 	mux.Handle("POST /_matrix/client/v3/user_directory/search", authMiddleware(http.HandlerFunc(h.searchUsers)))
 
