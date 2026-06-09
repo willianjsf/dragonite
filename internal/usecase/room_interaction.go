@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -16,16 +17,22 @@ type RoomInteractionService struct {
 	eventoRepo       EventoStorage
 	fedService       FederationService
 	authRuleResolver *AuthRuleResolver
+	serverName       string
+	keyID            string
+	privateKey       ed25519.PrivateKey
 	uow              WorkUnit
 }
 
-func NewRoomInteractionService(canalRepo CanalStorage, eventoRepo EventoStorage, fedService FederationService, authRuleResolver *AuthRuleResolver, uow WorkUnit) *RoomInteractionService {
+func NewRoomInteractionService(canalRepo CanalStorage, eventoRepo EventoStorage, fedService FederationService, authRuleResolver *AuthRuleResolver, uow WorkUnit, serverName, keyID string, privateKey ed25519.PrivateKey) *RoomInteractionService {
 	return &RoomInteractionService{
 		canalRepo:        canalRepo,
 		eventoRepo:       eventoRepo,
 		fedService:       fedService,
 		authRuleResolver: authRuleResolver,
 		uow:              uow,
+		serverName:       serverName,
+		keyID:            keyID,
+		privateKey:       privateKey,
 	}
 }
 
@@ -87,6 +94,12 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 		return "", fmt.Errorf("failed to hash event: %w", err)
 	}
 	newEvent.ID = eventID
+
+	signJSON, err := util.SignMatrixEvent(newEvent, s.serverName, s.keyID, s.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign event: %w", err)
+	}
+	newEvent.Signatures = signJSON
 
 	// 5. ATOMIC DATABASE TRANSACTION (The 3-Step State Update)
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
@@ -164,6 +177,12 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 		return "", fmt.Errorf("failed to hash event: %w", err)
 	}
 	newEvent.ID = eventID
+
+	signJSON, err := util.SignMatrixEvent(newEvent, s.serverName, s.keyID, s.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign event: %w", err)
+	}
+	newEvent.Signatures = signJSON
 
 	// 5. ATOMIC DATABASE TRANSACTION
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {

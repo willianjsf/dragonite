@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"crypto/ed25519"
 	"fmt"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -60,7 +61,7 @@ func resolveGenesisAuth(ev *domain.Evento, state *genesisState) []string {
 }
 
 // linkAndHashGenesis sequence chains a dynamic list of events together.
-func linkAndHashGenesis(events []*domain.Evento) error {
+func linkAndHashGenesis(events []*domain.Evento, serverName, keyID string, privateKey ed25519.PrivateKey) error {
 	state := &genesisState{
 		authCache: make(map[string]string),
 	}
@@ -93,6 +94,12 @@ func linkAndHashGenesis(events []*domain.Evento) error {
 			return fmt.Errorf("failed to hash event %s: %w", ev.Tipo, err)
 		}
 		ev.ID = eventID
+
+		sigJSON, err := util.SignMatrixEvent(ev, serverName, keyID, privateKey)
+		if err != nil {
+			return fmt.Errorf("failed to sign genesis event %s: %w", ev.Tipo, err)
+		}
+		ev.Signatures = sigJSON
 
 		// ---------------------------------------------------
 		// STEP 4: Update the Tracker for the Next Loop!

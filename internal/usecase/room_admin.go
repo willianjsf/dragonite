@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"crypto/ed25519"
 	"fmt"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -29,7 +30,10 @@ type CreateRoomParams struct {
 }
 
 type RoomAdminService struct {
-	serverName   string
+	serverName string
+	keyID      string
+	privateKey ed25519.PrivateKey
+
 	uow          WorkUnit
 	fedService   FederationService
 	usuarioStore UsuarioStorage
@@ -37,9 +41,11 @@ type RoomAdminService struct {
 	eventoStore  EventoStorage
 }
 
-func NewRoomAdminService(serverName string, uow WorkUnit, fedService FederationService, canalStore CanalStorage, eventoStore EventoStorage, usuarioStore UsuarioStorage) *RoomAdminService {
+func NewRoomAdminService(serverName, keyID string, privateKey ed25519.PrivateKey, uow WorkUnit, fedService FederationService, canalStore CanalStorage, eventoStore EventoStorage, usuarioStore UsuarioStorage) *RoomAdminService {
 	return &RoomAdminService{
 		serverName:   serverName,
+		keyID:        keyID,
+		privateKey:   privateKey,
 		uow:          uow,
 		fedService:   fedService,
 		usuarioStore: usuarioStore,
@@ -103,7 +109,7 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 		inviteEvents[invitee] = *inviteEvent
 	}
 
-	if err := linkAndHashGenesis(eventsToSave); err != nil {
+	if err := linkAndHashGenesis(eventsToSave, s.serverName, s.keyID, s.privateKey); err != nil {
 		return nil, err
 	}
 
