@@ -74,3 +74,12 @@ func (s *PostgresStorage) SaveEvento(ctx context.Context, event *domain.Evento) 
 
 	return nil
 }
+
+func (s *PostgresStorage) CheckEventoExists(ctx context.Context, eventID string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM Evento WHERE id_evento = $1)`, eventID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check event exists: %w", err)
+	}
+	return exists, nil
+}

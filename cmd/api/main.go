@@ -48,7 +48,7 @@ func main() {
 	authService := usecase.NewAuthService(config.JWTToken, config.ServerName, storage, storage)
 	authRuleResolver := usecase.NewAuthRuleResolver(storage)
 	dirService := usecase.NewDirectoryService(storage, storage)
-	fedService := usecase.NewFederationService()
+	fedService := usecase.NewFederationService(config.ServerName, config.KeyID, config.PrivateKey, storage, storage, storage)
 	profileService := usecase.NewProfileService(storage)
 	roomAdminService := usecase.NewRoomAdminService(config.ServerName, config.KeyID, config.PrivateKey, storage, fedService, storage, storage, storage)
 	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, fedService, authRuleResolver, storage, config.ServerName, config.KeyID, config.PrivateKey)
@@ -59,7 +59,7 @@ func main() {
 
 	// cria servidor
 	server := http_adapter.NewServer(config.ServerPort, config.JWTToken,
-		config.ServerName, authService, dirService, profileService, roomMembershipService,
+		config.ServerName, authService, dirService, fedService, profileService, roomMembershipService,
 		roomAdminService, roomInteractionsService, syncService, systemService,
 		usuarioService,
 		idempoCache,

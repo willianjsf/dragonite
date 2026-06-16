@@ -15,7 +15,7 @@ import (
 type RoomInteractionService struct {
 	canalRepo        CanalStorage
 	eventoRepo       EventoStorage
-	fedService       FederationService
+	fedService       *FederationService
 	authRuleResolver *AuthRuleResolver
 	serverName       string
 	keyID            string
@@ -23,7 +23,7 @@ type RoomInteractionService struct {
 	uow              WorkUnit
 }
 
-func NewRoomInteractionService(canalRepo CanalStorage, eventoRepo EventoStorage, fedService FederationService, authRuleResolver *AuthRuleResolver, uow WorkUnit, serverName, keyID string, privateKey ed25519.PrivateKey) *RoomInteractionService {
+func NewRoomInteractionService(canalRepo CanalStorage, eventoRepo EventoStorage, fedService *FederationService, authRuleResolver *AuthRuleResolver, uow WorkUnit, serverName, keyID string, privateKey ed25519.PrivateKey) *RoomInteractionService {
 	return &RoomInteractionService{
 		canalRepo:        canalRepo,
 		eventoRepo:       eventoRepo,

@@ -13,9 +13,10 @@ import (
 
 type Handler struct {
 	sysService *usecase.SystemService
+	fedService *usecase.FederationService
 }
 
-func NewHandler(sysService *usecase.SystemService) *Handler {
+func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService) *Handler {
 	return &Handler{
 		sysService: sysService,
 	}
@@ -24,6 +25,7 @@ func NewHandler(sysService *usecase.SystemService) *Handler {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /_matrix/federation/v1/version", h.getVersion)
 	mux.HandleFunc("GET /_matrix/key/v2/server", h.getServerKey)
+	mux.HandleFunc("PUT /_matrix/federation/v1/send/{txnId}", h.putSendTxn)
 }
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -63,4 +65,34 @@ func (h *Handler) getServerKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) putSendTxn(w http.ResponseWriter, r *http.Request) {
+	txnID := r.PathValue("txnId")
+	if txnID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing txn ID")
+		return
+	}
+
+	// TODO: validar o S2S, ler o X-Matrix, buscar a chave publica e autenticar
+
+	var req TransactionRequest
+	if err := httputil.ParseBody(r, &req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
+		return
+	}
+
+	// 2. Processamos cada PDU individualmente
+	results := make(map[string]map[string]string)
+
+	for _, pdu := range req.PDUs {
+		err := h.fedService.ProcessInboundPDU(r.Context(), req.Origin, pdu)
+		if err != nil {
+			results[pdu.ID] = map[string]string{"error": err.Error()}
+		} else {
+			results[pdu.ID] = map[string]string{}
+		}
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"pdus": results})
 }

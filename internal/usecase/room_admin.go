@@ -35,13 +35,13 @@ type RoomAdminService struct {
 	privateKey ed25519.PrivateKey
 
 	uow          WorkUnit
-	fedService   FederationService
+	fedService   *FederationService
 	usuarioStore UsuarioStorage
 	canalStore   CanalStorage
 	eventoStore  EventoStorage
 }
 
-func NewRoomAdminService(serverName, keyID string, privateKey ed25519.PrivateKey, uow WorkUnit, fedService FederationService, canalStore CanalStorage, eventoStore EventoStorage, usuarioStore UsuarioStorage) *RoomAdminService {
+func NewRoomAdminService(serverName, keyID string, privateKey ed25519.PrivateKey, uow WorkUnit, fedService *FederationService, canalStore CanalStorage, eventoStore EventoStorage, usuarioStore UsuarioStorage) *RoomAdminService {
 	return &RoomAdminService{
 		serverName:   serverName,
 		keyID:        keyID,

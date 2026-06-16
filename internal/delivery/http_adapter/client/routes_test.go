@@ -93,6 +93,10 @@ func (c *clientCanalStore) SaveAlias(ctx context.Context, roomID, fullAlias stri
 	return nil
 }
 
+func (c *clientCanalStore) GetCanalParticipatingServers(ctx context.Context, canalID string) ([]string, error) {
+	return nil, nil
+}
+
 func TestGetVersions(t *testing.T) {
 	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil)
 

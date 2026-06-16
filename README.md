@@ -95,7 +95,53 @@ make run
 
 <!-- ## EXtra Sections -->
 
-<!-- ## API -->
+## API
+
+```sh
+.
+├── air.toml
+├── cmd
+│   └── api
+├── docker-compose.yml
+├── frontend
+│   ├── eslint.config.js
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── README.md
+│   ├── src
+│   ├── static
+│   ├── svelte.config.js
+│   ├── tsconfig.json
+│   └── vite.config.ts
+├── go.mod
+├── go.sum
+├── internal
+│   ├── delivery
+│   ├── domain
+│   ├── infrastructure
+│   ├── usecase
+│   └── util
+├── LICENSE
+├── Makefile
+├── migrate.sh
+├── migrations
+│   ├── 000001_usuario_table.down.sql
+│   ├── 000001_usuario_table.up.sql
+│   ├── 000002_evento_table.down.sql
+│   ├── 000002_evento_table.up.sql
+│   ├── 000004_canal_table.down.sql
+│   ├── 000004_canal_table.up.sql
+│   ├── 000005_filter_receipt_table.down.sql
+│   ├── 000005_filter_receipt_table.up.sql
+│   ├── 000006_midia_table.down.sql
+│   ├── 000006_midia_table.up.sql
+│   ├── 000007_matrix_sync_client_func.down.sql
+│   └── 000007_matrix_sync_client_func.up.sql
+├── README.md
+├── static
+└── TASKS.md
+
+```
 
 ## Maintainers
 

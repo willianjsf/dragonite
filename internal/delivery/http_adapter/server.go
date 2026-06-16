@@ -20,6 +20,7 @@ type Server struct {
 	serverName              string
 	authService             *usecase.AuthService
 	dirService              *usecase.DirectoryService
+	fedService              *usecase.FederationService
 	profileService          *usecase.ProfileService
 	roomAdminService        *usecase.RoomAdminService
 	roomMembershipService   *usecase.RoomMembershipService
@@ -36,6 +37,7 @@ func NewServer(port int,
 	serverName string,
 	authService *usecase.AuthService,
 	dirService *usecase.DirectoryService,
+	fedService *usecase.FederationService,
 	profileService *usecase.ProfileService,
 	roomMembershipService *usecase.RoomMembershipService,
 	roomAdminService *usecase.RoomAdminService,
@@ -47,10 +49,12 @@ func NewServer(port int,
 ) *http.Server {
 
 	NewServer := &Server{
-		authService:             authService,
-		dirService:              dirService,
-		jwtSecret:               jwtSecret,
-		port:                    port,
+		authService: authService,
+		dirService:  dirService,
+		fedService:  fedService,
+		jwtSecret:   jwtSecret,
+		port:        port,
+
 		profileService:          profileService,
 		roomAdminService:        roomAdminService,
 		roomMembershipService:   roomMembershipService,
@@ -91,7 +95,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
 
-	federationHandler := federation.NewHandler(s.systemService)
+	federationHandler := federation.NewHandler(s.systemService, s.fedService)
 	federationHandler.RegisterRoutes(mux)
 
 	// Registra rotas

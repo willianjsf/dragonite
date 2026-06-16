@@ -1,5 +1,7 @@
 package federation
 
+import "github.com/caio-bernardo/dragonite/internal/domain"
+
 type VersionResponse struct {
 	Server struct {
 		Name    string `json:"name"`
@@ -18,4 +20,10 @@ type ServerKeyResponse struct {
 type VerifyKey struct {
 	Key       string `json:"key"`
 	ExpiredTS int64  `json:"expired_ts,omitzero"`
+}
+
+type TransactionRequest struct {
+	Origin         string          `json:"origin"`
+	OriginServerTS string          `json:"origin_server_ts"`
+	PDUs           []domain.Evento `json:"pdus"`
 }

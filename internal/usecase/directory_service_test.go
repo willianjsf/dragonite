@@ -60,6 +60,10 @@ func (f *fakeCanalStore) SaveAlias(ctx context.Context, roomID, fullAlias string
 	return nil
 }
 
+func (f *fakeCanalStore) GetCanalParticipatingServers(ctx context.Context, canalID string) ([]string, error) {
+	return nil, nil
+}
+
 func TestDirectoryServiceSearchProfilesBuildsFilter(t *testing.T) {
 	display := "Alice"
 	avatar := "mxc://example.com/abc"

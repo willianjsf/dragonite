@@ -260,3 +260,30 @@ func (s *PostgresStorage) SaveAlias(ctx context.Context, roomID, fullAlias strin
 
 	return nil
 }
+
+func (s *PostgresStorage) GetCanalParticipatingServers(ctx context.Context, canalID string) ([]string, error) {
+	query := `
+        SELECT DISTINCT split_part(id_usuario, ':', 2) AS domain
+        FROM Canal_Membership
+        WHERE id_canal = $1 AND membership_type IN ('join', 'invite')
+    `
+
+	row, err := s.db.Query(ctx, query, canalID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get participating server: %w", err)
+	}
+	defer row.Close()
+
+	var domains []string
+	for row.Next() {
+		var domain string
+		if err := row.Scan(&domain); err != nil {
+			return nil, fmt.Errorf("failed to scan domain: %w", err)
+		}
+		if domain != "" {
+			domains = append(domains, domain)
+		}
+	}
+
+	return domains, nil
+}

@@ -25,6 +25,8 @@ type UsuarioStorage interface {
 
 type CanalStorage interface {
 	Create(ctx context.Context, roomID, userID string) (*domain.Canal, error)
+	// Get all unique servers from users in the room
+	GetCanalParticipatingServers(ctx context.Context, canalID string) ([]string, error)
 	GetByID(ctx context.Context, canalID string) (*domain.Canal, error)
 	// Get join_rules from a room
 	GetJoinRule(ctx context.Context, roomID string) (string, error)
@@ -47,6 +49,7 @@ type EventoStorage interface {
 	GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error)
 	GetMaxDepthFromEventos(ctx context.Context, eventIDs []string) (int64, error)
 	SaveEvento(ctx context.Context, event *domain.Evento) error
+	CheckEventoExists(ctx context.Context, eventID string) (bool, error)
 }
 
 type DeviceStorage interface {
@@ -71,8 +74,4 @@ type Notifier interface {
 // Executes operations inside a transaction. Commit if succeeds or rollback in failure
 type WorkUnit interface {
 	Execute(ctx context.Context, fn func(txCtx context.Context) error) error
-}
-
-type FederationService interface {
-	QueueOutgoing(ctx context.Context, event domain.Evento) error
 }

@@ -20,34 +20,34 @@ func NewSystemService(serverName, serverVersion string, serverPublicKey, serverP
 	}
 }
 
-func (h *SystemService) PingDB() map[string]string {
-	return h.storage.PingDB()
+func (s *SystemService) PingDB() map[string]string {
+	return s.storage.PingDB()
 }
 
-func (h *SystemService) GetServerName() string {
-	return h.serverName
+func (s *SystemService) GetServerName() string {
+	return s.serverName
 }
 
-func (h *SystemService) GetServerVersion() string {
-	return h.serverVersion
+func (s *SystemService) GetServerVersion() string {
+	return s.serverVersion
 }
 
-func (h *SystemService) GetPublicKey() []byte {
-	return h.serverPublicKey
+func (s *SystemService) GetPublicKey() []byte {
+	return s.serverPublicKey
 }
 
-func (h *SystemService) GetPrivateKey() []byte {
-	return h.serverPrivateKey
+func (s *SystemService) GetPrivateKey() []byte {
+	return s.serverPrivateKey
 }
 
-func (h *SystemService) GetServerKeyID() string {
-	return h.serverKeyID
+func (s *SystemService) GetServerKeyID() string {
+	return s.serverKeyID
 }
 
-func (h *SystemService) GetServerPrivateKey() []byte {
-	return h.serverPrivateKey
+func (s *SystemService) GetServerPrivateKey() []byte {
+	return s.serverPrivateKey
 }
 
-func (h *SystemService) GetServerPublicKey() []byte {
-	return h.serverPublicKey
+func (s *SystemService) GetServerPublicKey() []byte {
+	return s.serverPublicKey
 }

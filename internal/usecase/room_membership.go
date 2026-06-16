@@ -76,9 +76,9 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 	if err != nil {
 		return err
 	}
+	// local clients notified by notifier
+	// TODO: 6. Notify remote servers
 
-	// 6. Notify local clients (so the room disappears from their UI instantly)
-	// NOTE: client are automatically notified after transaction is completed by notifier package
 	return nil
 }
 
@@ -148,7 +148,8 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 		return err
 	}
 
-	// 7. Notify clients
-	// NOTE: client are automatically notified after transaction is completed by notifier package
+	// TODO: 7. Notify remote users
 	return nil
 }
+
+// TODO: implementar Join Remote ROOM

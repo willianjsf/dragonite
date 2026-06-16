@@ -58,3 +58,29 @@ func SignMatrixEvent(event *domain.Evento, serverName, keyID string, privateKey 
 
 	return json.Marshal(sigObject)
 }
+
+func GenerateS2SAuthHeader(serverName, keyID string, privateKey ed25519.PrivateKey, method, uri, destination string, content any) (string, error) {
+	signObj := map[string]any{
+		"method":      method,
+		"uri":         uri,
+		"origin":      serverName,
+		"destination": destination,
+	}
+
+	if content != nil {
+		signObj["content"] = content
+	}
+
+	canonicalBytes, err := CanonicalJSON(signObj)
+	if err != nil {
+		return "", err
+	}
+
+	signature := ed25519.Sign(privateKey, canonicalBytes)
+
+	encodedSig := base64.RawStdEncoding.EncodeToString(signature)
+
+	authHeader := fmt.Sprintf(`X-Matrix origin="%s",key="ed25519:%s",sig="%s"`, serverName, keyID, encodedSig)
+
+	return authHeader, nil
+}

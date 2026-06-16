@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"strings"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/gibson042/canonicaljson-go"
@@ -14,6 +15,14 @@ func CreateRoomID(serverName string) string {
 	roomID := make([]byte, 16)
 	rand.Read(roomID)
 	return fmt.Sprintf("!%s:%s", roomID, serverName)
+}
+
+func ExtractDomainFromUserID(userID string) string {
+	parts := strings.Split(userID, ":")
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return ""
 }
 
 // hashMatrixEvent calculates the Canonical JSON SHA-256 hash of an event
