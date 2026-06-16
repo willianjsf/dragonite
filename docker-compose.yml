@@ -10,6 +10,13 @@ services:
       - "${DRAGONITE_DB_PORT}:5432"
     volumes:
       - psql_volume_dragonite:/var/lib/postgresql/data
+  redis_dragonite:
+    image: redis:latest
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ""
+    ports:
+      - "16379:6379"
 
 volumes:
   psql_volume_dragonite:

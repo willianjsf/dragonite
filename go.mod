@@ -59,6 +59,7 @@ require (
 	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/metric v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
@@ -67,10 +68,12 @@ require (
 )
 
 require (
+	github.com/gibson042/canonicaljson-go v1.0.3
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/redis/go-redis/v9 v9.20.0
 	github.com/testcontainers/testcontainers-go v0.41.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.41.0
 	golang.org/x/sync v0.20.0 // indirect
