@@ -462,9 +462,10 @@ func TestPostPublicRooms_EmptyBody(t *testing.T) {
 // Fakes para FederationService
 
 type fakeFedCanalStore struct {
-	canal    *domain.Canal
-	joinRule string
-	servers  []string
+	canal      *domain.Canal
+	joinRule   string
+	servers    []string
+	membership string
 }
 
 func (f *fakeFedCanalStore) GetByID(_ context.Context, _ string) (*domain.Canal, error) {
@@ -487,7 +488,7 @@ func (f *fakeFedCanalStore) GetUserJoinedRooms(_ context.Context, _ string) ([]s
 	return nil, nil
 }
 func (f *fakeFedCanalStore) GetUserMembership(_ context.Context, _, _ string) (string, error) {
-	return "", nil
+	return f.membership, nil
 }
 func (f *fakeFedCanalStore) GetStateEventID(_ context.Context, _, _, _ string) (string, bool) {
 	return "", false
@@ -1019,5 +1020,306 @@ func TestPutInvite_HappyPath(t *testing.T) {
 
 	if _, ok := sigs["dragonite.com"]; !ok {
 		t.Errorf("expected response to be signed by dragonite.com, got sigs: %v", sigs)
+	}
+}
+
+// Testes makeLeave
+
+func TestMakeLeave_RoomNotFound(t *testing.T) {
+	h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: nil}, &fakeFedEventoStore{})
+	server := newMuxServer("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", h.makeLeave)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_leave/%21naoexiste%3Adriagonite.com/%40bob%3Aremote.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestMakeLeave_UserNotMember(t *testing.T) {
+	canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+	// membership is "" by default — user is not a member
+	h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+	server := newMuxServer("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", h.makeLeave)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_leave/%21room%3Adriagonite.com/%40bob%3Aremote.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestMakeLeave_HappyPath(t *testing.T) {
+	userID := "@bob:remote.com"
+	canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+	h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal, membership: "join"}, &fakeFedEventoStore{})
+	server := newMuxServer("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", h.makeLeave)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_leave/%21room%3Adriagonite.com/%40bob%3Aremote.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body MakeLeaveResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.RoomVersion != "11" {
+		t.Errorf("expected room_version 11, got %q", body.RoomVersion)
+	}
+	if body.Event.Type != "m.room.member" {
+		t.Errorf("expected type m.room.member, got %q", body.Event.Type)
+	}
+	if body.Event.Sender != userID {
+		t.Errorf("expected sender %q, got %q", userID, body.Event.Sender)
+	}
+	if body.Event.Content.Membership != "leave" {
+		t.Errorf("expected membership leave, got %q", body.Event.Content.Membership)
+	}
+}
+
+// Testes sendLeave
+
+func signLeaveRequest(t *testing.T, privKey ed25519.PrivateKey, keyID string, req SendLeaveRequest) SendLeaveRequest {
+	t.Helper()
+	payload := map[string]interface{}{
+		"content":          req.Content,
+		"origin":           req.Origin,
+		"origin_server_ts": req.OriginServerTS,
+		"room_id":          req.RoomID,
+		"sender":           req.Sender,
+		"state_key":        req.StateKey,
+		"type":             req.Type,
+	}
+	canonical, err := util.CanonicalJSON(payload)
+	if err != nil {
+		t.Fatalf("signLeaveRequest: %v", err)
+	}
+	sig := base64.RawStdEncoding.EncodeToString(ed25519.Sign(privKey, canonical))
+	req.Signatures = map[string]map[string]string{
+		req.Origin: {keyID: sig},
+	}
+	return req
+}
+
+func TestSendLeave_BadJSON(t *testing.T) {
+	canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+	h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+	server := newMuxServer("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", h.sendLeave)
+	defer server.Close()
+
+	req, _ := http.NewRequest(http.MethodPut,
+		server.URL+"/_matrix/federation/v2/send_leave/%21room%3Adriagonite.com/%24e%3Aremote.com",
+		strings.NewReader("{invalid}"))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSendLeave_InvalidType(t *testing.T) {
+	canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+	h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+	server := newMuxServer("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", h.sendLeave)
+	defer server.Close()
+
+	body, _ := json.Marshal(SendLeaveRequest{
+		Type: "m.room.message", Sender: "@bob:remote.com", StateKey: "@bob:remote.com",
+		Origin: "remote.com", Content: MembershipContent{Membership: "leave"},
+	})
+	req, _ := http.NewRequest(http.MethodPut,
+		server.URL+"/_matrix/federation/v2/send_leave/%21room%3Adriagonite.com/%24e%3Aremote.com",
+		strings.NewReader(string(body)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSendLeave_MembershipNotLeave(t *testing.T) {
+	canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+	h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+	server := newMuxServer("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", h.sendLeave)
+	defer server.Close()
+
+	body, _ := json.Marshal(SendLeaveRequest{
+		Type: "m.room.member", Sender: "@bob:remote.com", StateKey: "@bob:remote.com",
+		Origin: "remote.com", Content: MembershipContent{Membership: "join"},
+	})
+	req, _ := http.NewRequest(http.MethodPut,
+		server.URL+"/_matrix/federation/v2/send_leave/%21room%3Adriagonite.com/%24e%3Aremote.com",
+		strings.NewReader(string(body)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSendLeave_SenderNotEqualStateKey(t *testing.T) {
+	canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+	h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+	server := newMuxServer("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", h.sendLeave)
+	defer server.Close()
+
+	body, _ := json.Marshal(SendLeaveRequest{
+		Type: "m.room.member", Sender: "@bob:remote.com", StateKey: "@alice:remote.com",
+		Origin: "remote.com", Content: MembershipContent{Membership: "leave"},
+	})
+	req, _ := http.NewRequest(http.MethodPut,
+		server.URL+"/_matrix/federation/v2/send_leave/%21room%3Adriagonite.com/%24e%3Aremote.com",
+		strings.NewReader(string(body)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSendLeave_SenderNotFromOrigin(t *testing.T) {
+	canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+	h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+	server := newMuxServer("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", h.sendLeave)
+	defer server.Close()
+
+	body, _ := json.Marshal(SendLeaveRequest{
+		Type: "m.room.member", Sender: "@bob:outro.com", StateKey: "@bob:outro.com",
+		Origin: "remote.com", Content: MembershipContent{Membership: "leave"},
+	})
+	req, _ := http.NewRequest(http.MethodPut,
+		server.URL+"/_matrix/federation/v2/send_leave/%21room%3Adriagonite.com/%24e%3Aremote.com",
+		strings.NewReader(string(body)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSendLeave_InvalidSignature(t *testing.T) {
+	canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+	h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal, membership: "join"}, &fakeFedEventoStore{})
+
+	wrongPub, _, _ := ed25519.GenerateKey(rand.Reader)
+	h.keyFetcher = func(_ string) (string, ed25519.PublicKey, error) {
+		return "ed25519:remote", wrongPub, nil
+	}
+
+	server := newMuxServer("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", h.sendLeave)
+	defer server.Close()
+
+	_, realPriv, _ := ed25519.GenerateKey(rand.Reader)
+	leaveReq := signLeaveRequest(t, realPriv, "ed25519:remote", SendLeaveRequest{
+		Type: "m.room.member", Sender: "@bob:remote.com", StateKey: "@bob:remote.com",
+		Origin: "remote.com", RoomID: "!room:dragonite.com", EventID: "$e:remote.com",
+		OriginServerTS: time.Now().UnixMilli(), Content: MembershipContent{Membership: "leave"},
+	})
+	body, _ := json.Marshal(leaveReq)
+	req, _ := http.NewRequest(http.MethodPut,
+		server.URL+"/_matrix/federation/v2/send_leave/%21room%3Adriagonite.com/%24e%3Aremote.com",
+		strings.NewReader(string(body)))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSendLeave_HappyPath(t *testing.T) {
+	remotePub, remotePriv, _ := ed25519.GenerateKey(rand.Reader)
+	remoteKeyID := "ed25519:remote"
+	remoteOrigin := "remote.com"
+
+	canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+	canalStore := &fakeFedCanalStore{
+		canal:      canal,
+		membership: "join",
+		servers:    []string{"dragonite.com"},
+	}
+
+	h := newTestHandlerWithFed(t, canalStore, &fakeFedEventoStore{})
+	h.keyFetcher = func(_ string) (string, ed25519.PublicKey, error) {
+		return remoteKeyID, remotePub, nil
+	}
+
+	server := newMuxServer("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", h.sendLeave)
+	defer server.Close()
+
+	leaveReq := signLeaveRequest(t, remotePriv, remoteKeyID, SendLeaveRequest{
+		Type:           "m.room.member",
+		Sender:         "@bob:" + remoteOrigin,
+		StateKey:       "@bob:" + remoteOrigin,
+		Origin:         remoteOrigin,
+		RoomID:         canal.ID,
+		EventID:        "$leave:remote.com",
+		OriginServerTS: time.Now().UnixMilli(),
+		Content:        MembershipContent{Membership: "leave"},
+	})
+	body, _ := json.Marshal(leaveReq)
+
+	req, _ := http.NewRequest(http.MethodPut,
+		server.URL+"/_matrix/federation/v2/send_leave/%21room%3Adriagonite.com/%24leave%3Aremote.com",
+		strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, bodyBytes)
+	}
+
+	var respBody map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(respBody) != 0 {
+		t.Errorf("expected empty response body, got %v", respBody)
 	}
 }

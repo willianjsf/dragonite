@@ -433,6 +433,60 @@ func (f *FederationService) ProcessSendJoin(ctx context.Context, roomID string, 
 	}, nil
 }
 
+type MakeLeaveResult struct {
+	RoomVersion string
+	Sender      string
+	RoomID      string
+	Origin      string
+	Timestamp   int64
+}
+
+func (f *FederationService) MakeLeave(ctx context.Context, roomID, userID string) (*MakeLeaveResult, error) {
+	canal, err := f.canalStore.GetByID(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up room: %w", err)
+	}
+	if canal == nil {
+		return nil, types.ErrNotFound
+	}
+
+	membership, err := f.canalStore.GetUserMembership(ctx, roomID, userID)
+	if err != nil || (membership != "join" && membership != "invite") {
+		return nil, types.ErrForbidden
+	}
+
+	return &MakeLeaveResult{
+		RoomVersion: canal.Versao,
+		Sender:      userID,
+		RoomID:      roomID,
+		Origin:      f.serverName,
+		Timestamp:   time.Now().UnixMilli(),
+	}, nil
+}
+
+func (f *FederationService) ProcessSendLeave(ctx context.Context, roomID string, leaveEvent *domain.Evento) error {
+	canal, err := f.canalStore.GetByID(ctx, roomID)
+	if err != nil {
+		return fmt.Errorf("failed to check room: %w", err)
+	}
+	if canal == nil {
+		return types.ErrNotFound
+	}
+
+	return f.uow.Execute(ctx, func(txCtx context.Context) error {
+		if err := f.eventoStore.SaveEvento(txCtx, leaveEvent); err != nil {
+			return fmt.Errorf("failed to save leave event: %w", err)
+		}
+		if err := f.canalStore.UpsertCurrentState(txCtx, roomID, "m.room.member", leaveEvent.Sender, leaveEvent.ID); err != nil {
+			return fmt.Errorf("failed to upsert current state: %w", err)
+		}
+		if err := f.canalStore.UpsertMembership(txCtx, roomID, leaveEvent.Sender, "leave"); err != nil {
+			return fmt.Errorf("failed to upsert membership: %w", err)
+		}
+		return nil
+	})
+}
+
 func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, inviteEvent *domain.Evento) error {
 	err := f.uow.Execute(ctx, func(txCtx context.Context) error {
 		// checa se o canal existe

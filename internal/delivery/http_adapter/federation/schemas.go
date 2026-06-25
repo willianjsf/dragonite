@@ -108,6 +108,27 @@ type StrippedStateEvent struct {
 	Sender   string          `json:"sender"`
 }
 
+// make_leave
+
+type MakeLeaveResponse struct {
+	Event       EventTemplate `json:"event"`
+	RoomVersion string        `json:"room_version"`
+}
+
+// send_leave
+
+type SendLeaveRequest struct {
+	Content        MembershipContent            `json:"content"`
+	Origin         string                       `json:"origin"`
+	OriginServerTS int64                        `json:"origin_server_ts"`
+	Sender         string                       `json:"sender"`
+	StateKey       string                       `json:"state_key"`
+	Type           string                       `json:"type"`
+	RoomID         string                       `json:"room_id"`
+	EventID        string                       `json:"event_id"`
+	Signatures     map[string]map[string]string `json:"signatures"`
+}
+
 type InviteRequest struct {
 	RoomVersion     string               `json:"room_version"`
 	Event           json.RawMessage      `json:"event"`
