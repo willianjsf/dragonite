@@ -11,6 +11,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/federation"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
+	"github.com/caio-bernardo/dragonite/internal/util"
 )
 
 // AppServer representa o servidor em nível de aplicação
@@ -30,6 +31,7 @@ type Server struct {
 	usuarioService          *usecase.UsuarioService
 	mediaService            *usecase.MediaService
 	idempotencyCache        infrastructure.IdempotencyCache
+	keyFetcher              federation.KeyFetcherFn
 }
 
 // Cria um novo servidor http
@@ -48,6 +50,7 @@ func NewServer(port int,
 	usuarioService *usecase.UsuarioService,
 	mediaService *usecase.MediaService,
 	idempotencyCache infrastructure.IdempotencyCache,
+	keyFetcher federation.KeyFetcherFn,
 ) *http.Server {
 
 	NewServer := &Server{
@@ -66,6 +69,7 @@ func NewServer(port int,
 		usuarioService:          usuarioService,
 		mediaService:            mediaService,
 		idempotencyCache:        idempotencyCache,
+		keyFetcher:              util.FetchRemoteServerKey,
 	}
 
 	// servidor http, com endpoints registrados e timeout para operações R/W
@@ -99,7 +103,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
 
-	federationHandler := federation.NewHandler(s.systemService, s.fedService, s.roomInteractionsService, s.profileService, s.dirService)
+	federationHandler := federation.NewHandler(s.systemService, s.fedService, s.roomInteractionsService, s.profileService, s.dirService, s.keyFetcher)
 	federationHandler.RegisterRoutes(mux)
 
 	// Registra rotas

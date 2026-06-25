@@ -15,6 +15,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/postgres"
 	"github.com/caio-bernardo/dragonite/internal/infrastructure/redis_infra"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
+	"github.com/caio-bernardo/dragonite/internal/util"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -83,6 +84,7 @@ func main() {
 		usuarioService,
 		mediaService,
 		idempoCache,
+		util.FetchRemoteServerKey,
 	)
 
 	// cria um novo channel do tipo booleano e espaço de memória 1 byte

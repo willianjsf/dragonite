@@ -11,6 +11,7 @@ import (
     "strings"
 	"testing"
 	"time"
+    "io"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
@@ -26,7 +27,7 @@ func (s *fakeSystemStorage) PingDB() map[string]string {
 func TestFederationGetVersion(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("example.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	h := NewHandler(sys, nil, nil, nil, nil)
+	h := NewHandler(sys, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/federation/v1/version", nil)
@@ -49,7 +50,7 @@ func TestFederationGetVersion(t *testing.T) {
 func TestFederationGetServerKeySignature(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("example.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	h := NewHandler(sys, nil, nil, nil, nil)
+	h := NewHandler(sys, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/key/v2/server", nil)
@@ -124,7 +125,7 @@ func newTestHandlerWithProfile(t *testing.T, storage *fakeUsuarioStorage) *Handl
     pub, priv, _ := ed25519.GenerateKey(rand.Reader)
     sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
     profileSvc := usecase.NewProfileService(storage)
-    return NewHandler(sys, nil, nil, profileSvc, nil)
+    return NewHandler(sys, nil, nil, profileSvc, nil, nil)
 }
 
 func TestGetProfile_MissingUserID(t *testing.T) {
@@ -293,7 +294,7 @@ func newTestHandlerWithDir(t *testing.T, storage *fakeDirectoryStorage) *Handler
     pub, priv, _ := ed25519.GenerateKey(rand.Reader)
     sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
     dirSvc := usecase.NewDirectoryService(storage, nil, nil)
-    return NewHandler(sys, nil, nil, nil, dirSvc)
+    return NewHandler(sys, nil, nil, nil, dirSvc, nil)
 }
 
 func TestGetPublicRooms_Empty(t *testing.T) {
@@ -447,5 +448,370 @@ func TestPostPublicRooms_EmptyBody(t *testing.T) {
     }
     if len(resp.Chunk) != 1 {
         t.Fatalf("expected 1 room, got %d", len(resp.Chunk))
+    }
+}
+
+// Fakes para FederationService
+
+type fakeFedCanalStore struct {
+    canal     *domain.Canal
+    joinRule  string
+    servers   []string
+}
+
+func (f *fakeFedCanalStore) GetByID(_ context.Context, _ string) (*domain.Canal, error) {
+    return f.canal, nil
+}
+func (f *fakeFedCanalStore) GetJoinRule(_ context.Context, _ string) (string, error) {
+    return f.joinRule, nil
+}
+func (f *fakeFedCanalStore) GetCanalParticipatingServers(_ context.Context, _ string) ([]string, error) {
+    return f.servers, nil
+}
+func (f *fakeFedCanalStore) UpsertMembership(_ context.Context, _, _, _ string) error    { return nil }
+func (f *fakeFedCanalStore) UpsertCurrentState(_ context.Context, _, _, _, _ string) error { return nil }
+func (f *fakeFedCanalStore) Create(_ context.Context, _, _ string) (*domain.Canal, error)  { return nil, nil }
+func (f *fakeFedCanalStore) GetUserJoinedRooms(_ context.Context, _ string) ([]string, error) { return nil, nil }
+func (f *fakeFedCanalStore) GetUserMembership(_ context.Context, _, _ string) (string, error) { return "", nil }
+func (f *fakeFedCanalStore) GetStateEventID(_ context.Context, _, _, _ string) (string, bool) { return "", false }
+func (f *fakeFedCanalStore) GetAllPublic(_ context.Context, _, _ int) ([]domain.Canal, error)  { return nil, nil }
+func (f *fakeFedCanalStore) UpdateForwardExtremities(_ context.Context, _ string, _ string, _ []string) error { return nil }
+func (f *fakeFedCanalStore) GetForwardExtremities(_ context.Context, _ string) ([]string, error)              { return nil, nil }
+func (f *fakeFedCanalStore) SaveAlias(_ context.Context, _, _ string) error                                   { return nil }
+
+type fakeFedEventoStore struct {
+    stateEvents []domain.Evento
+}
+
+func (f *fakeFedEventoStore) GetCurrentStateEvents(_ context.Context, _ string) ([]domain.Evento, error) {
+    if f.stateEvents == nil {
+        return []domain.Evento{}, nil
+    }
+    return f.stateEvents, nil
+}
+func (f *fakeFedEventoStore) SaveEvento(_ context.Context, _ *domain.Evento) error                                  { return nil }
+func (f *fakeFedEventoStore) GetSince(_ context.Context, _ string, _ domain.SyncToken) ([]domain.Evento, error)     { return nil, nil }
+func (f *fakeFedEventoStore) GetMaxDepthFromEventos(_ context.Context, _ []string) (int64, error)                   { return 0, nil }
+func (f *fakeFedEventoStore) GetEvento(_ context.Context, _ string) (*domain.Evento, error)                         { return nil, nil }
+func (f *fakeFedEventoStore) GetEventsSince(_ context.Context, _ string, _ int, _ []string) ([]domain.Evento, error) { return nil, nil }
+func (f *fakeFedEventoStore) CheckEventoExists(_ context.Context, _ string) (bool, error)                           { return false, nil }
+
+type fakeFedWorkUnit struct{}
+
+func (f *fakeFedWorkUnit) Execute(ctx context.Context, fn func(context.Context) error) error {
+    return fn(ctx)
+}
+
+// newMuxServer cria um httptest.Server com o handler registrado no padrão correto.
+// Necessário para testes de handlers que usam r.PathValue()
+func newMuxServer(pattern string, h http.HandlerFunc) *httptest.Server {
+    mux := http.NewServeMux()
+    mux.HandleFunc(pattern, h)
+    return httptest.NewServer(mux)
+}
+
+// signJoinRequest assina um SendJoinRequest com a chave privada fornecida.
+func signJoinRequest(t *testing.T, privKey ed25519.PrivateKey, keyID string, req SendJoinRequest) SendJoinRequest {
+    t.Helper()
+    payload := map[string]interface{}{
+        "content":          req.Content,
+        "origin":           req.Origin,
+        "origin_server_ts": req.OriginServerTS,
+        "room_id":          req.RoomID,
+        "sender":           req.Sender,
+        "state_key":        req.StateKey,
+        "type":             req.Type,
+    }
+    canonical, err := util.CanonicalJSON(payload)
+    if err != nil {
+        t.Fatalf("signJoinRequest: %v", err)
+    }
+    sig := base64.RawStdEncoding.EncodeToString(ed25519.Sign(privKey, canonical))
+    req.Signatures = map[string]map[string]string{
+        req.Origin: {keyID: sig},
+    }
+    return req
+}
+
+func newTestHandlerWithFed(t *testing.T, canalStore *fakeFedCanalStore, eventoStore *fakeFedEventoStore) *Handler {
+    t.Helper()
+    pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+    sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
+    fedSvc := usecase.NewFederationService("dragonite.com", "ed25519:1", priv, canalStore, eventoStore, &fakeFedWorkUnit{})
+    return NewHandler(sys, fedSvc, nil, nil, nil, nil)
+}
+
+// Testes makeJoin
+
+func TestMakeJoin_RoomNotFound(t *testing.T) {
+    h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: nil}, &fakeFedEventoStore{})
+    server := newMuxServer("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
+    defer server.Close()
+
+    resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_join/%21naoexiste%3Adriagonite.com/%40bob%3Aremote.com?ver=11")
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusNotFound {
+        t.Errorf("expected 404, got %d", resp.StatusCode)
+    }
+}
+
+func TestMakeJoin_IncompatibleVersion(t *testing.T) {
+    canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+    h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal, joinRule: "public"}, &fakeFedEventoStore{})
+    server := newMuxServer("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
+    defer server.Close()
+
+    resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_join/%21room%3Adriagonite.com/%40bob%3Aremote.com?ver=1&ver=2")
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestMakeJoin_RoomNotPublic(t *testing.T) {
+    canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+    h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal, joinRule: "invite"}, &fakeFedEventoStore{})
+    server := newMuxServer("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
+    defer server.Close()
+
+    resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_join/%21room%3Adriagonite.com/%40bob%3Aremote.com?ver=11")
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusForbidden {
+        t.Errorf("expected 403, got %d", resp.StatusCode)
+    }
+}
+
+func TestMakeJoin_HappyPath(t *testing.T) {
+    userID := "@bob:remote.com"
+    canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+    h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal, joinRule: "public"}, &fakeFedEventoStore{})
+    server := newMuxServer("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
+    defer server.Close()
+
+    resp, err := http.Get(server.URL + "/_matrix/federation/v1/make_join/%21room%3Adriagonite.com/%40bob%3Aremote.com?ver=11")
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        t.Fatalf("expected 200, got %d", resp.StatusCode)
+    }
+
+    var body MakeJoinResponse
+    if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+        t.Fatalf("decode: %v", err)
+    }
+    if body.RoomVersion != "11" {
+        t.Errorf("expected room_version 11, got %q", body.RoomVersion)
+    }
+    if body.Event.Type != "m.room.member" {
+        t.Errorf("expected type m.room.member, got %q", body.Event.Type)
+    }
+    if body.Event.Sender != userID {
+        t.Errorf("expected sender %q, got %q", userID, body.Event.Sender)
+    }
+    if body.Event.Content.Membership != "join" {
+        t.Errorf("expected membership join, got %q", body.Event.Content.Membership)
+    }
+}
+
+// Testes sendJoin
+
+func TestSendJoin_BadJSON(t *testing.T) {
+    canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+    h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/%21room%3Adriagonite.com/%24e%3Aremote.com",
+        strings.NewReader("{invalid}"))
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_InvalidType(t *testing.T) {
+    canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+    h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    body, _ := json.Marshal(SendJoinRequest{
+        Type: "m.room.message", Sender: "@bob:remote.com", StateKey: "@bob:remote.com",
+        Origin: "remote.com", Content: MembershipContent{Membership: "join"},
+    })
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/%21room%3Adriagonite.com/%24e%3Aremote.com",
+        strings.NewReader(string(body)))
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_SenderNotEqualStateKey(t *testing.T) {
+    canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+    h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    body, _ := json.Marshal(SendJoinRequest{
+        Type: "m.room.member", Sender: "@bob:remote.com", StateKey: "@alice:remote.com",
+        Origin: "remote.com", Content: MembershipContent{Membership: "join"},
+    })
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/%21room%3Adriagonite.com/%24e%3Aremote.com",
+        strings.NewReader(string(body)))
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_SenderNotFromOrigin(t *testing.T) {
+    canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+    h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal}, &fakeFedEventoStore{})
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    body, _ := json.Marshal(SendJoinRequest{
+        Type: "m.room.member", Sender: "@bob:outro.com", StateKey: "@bob:outro.com",
+        Origin: "remote.com", Content: MembershipContent{Membership: "join"},
+    })
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/%21room%3Adriagonite.com/%24e%3Aremote.com",
+        strings.NewReader(string(body)))
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_InvalidSignature(t *testing.T) {
+    canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+    h := newTestHandlerWithFed(t, &fakeFedCanalStore{canal: canal, joinRule: "public"}, &fakeFedEventoStore{})
+
+    wrongPub, _, _ := ed25519.GenerateKey(rand.Reader)
+    h.keyFetcher = func(_ string) (string, ed25519.PublicKey, error) {
+        return "ed25519:remote", wrongPub, nil
+    }
+
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    _, realPriv, _ := ed25519.GenerateKey(rand.Reader)
+    joinReq := signJoinRequest(t, realPriv, "ed25519:remote", SendJoinRequest{
+        Type: "m.room.member", Sender: "@bob:remote.com", StateKey: "@bob:remote.com",
+        Origin: "remote.com", RoomID: "!room:dragonite.com", EventID: "$e:remote.com",
+        OriginServerTS: time.Now().UnixMilli(), Content: MembershipContent{Membership: "join"},
+    })
+    body, _ := json.Marshal(joinReq)
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/%21room%3Adriagonite.com/%24e%3Aremote.com",
+        strings.NewReader(string(body)))
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusBadRequest {
+        t.Errorf("expected 400, got %d", resp.StatusCode)
+    }
+}
+
+func TestSendJoin_HappyPath(t *testing.T) {
+    remotePub, remotePriv, _ := ed25519.GenerateKey(rand.Reader)
+    remoteKeyID := "ed25519:remote"
+    remoteOrigin := "remote.com"
+
+    canal := &domain.Canal{ID: "!room:dragonite.com", Versao: "11"}
+    eventoStore := &fakeFedEventoStore{}
+    canalStore := &fakeFedCanalStore{
+        canal:    canal,
+        joinRule: "public",
+        servers:  []string{"dragonite.com"},
+    }
+
+    h := newTestHandlerWithFed(t, canalStore, eventoStore)
+    h.keyFetcher = func(_ string) (string, ed25519.PublicKey, error) {
+        return remoteKeyID, remotePub, nil
+    }
+
+    server := newMuxServer("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
+    defer server.Close()
+
+    joinReq := signJoinRequest(t, remotePriv, remoteKeyID, SendJoinRequest{
+        Type:           "m.room.member",
+        Sender:         "@bob:" + remoteOrigin,
+        StateKey:       "@bob:" + remoteOrigin,
+        Origin:         remoteOrigin,
+        RoomID:         canal.ID,
+        EventID:        "$join:remote.com",
+        OriginServerTS: time.Now().UnixMilli(),
+        Content:        MembershipContent{Membership: "join"},
+    })
+    body, _ := json.Marshal(joinReq)
+
+    req, _ := http.NewRequest(http.MethodPut,
+        server.URL+"/_matrix/federation/v2/send_join/%21room%3Adriagonite.com/%24join%3Aremote.com",
+        strings.NewReader(string(body)))
+    req.Header.Set("Content-Type", "application/json")
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        bodyBytes, _ := io.ReadAll(resp.Body)
+        t.Fatalf("expected 200, got %d: %s", resp.StatusCode, bodyBytes)
+    }
+
+    var respBody SendJoinResponse
+    if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+        t.Fatalf("decode: %v", err)
+    }
+    if respBody.State == nil {
+        t.Error("expected state to be non-nil")
+    }
+    if respBody.AuthChain == nil {
+        t.Error("expected auth_chain to be non-nil")
     }
 }

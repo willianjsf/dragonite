@@ -9,12 +9,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"errors"
+	"fmt"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
+	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 	"github.com/caio-bernardo/dragonite/internal/util"
 )
+
+// KeyFetcherFn permite injetar a busca de chave remota nos testes.
+type KeyFetcherFn func(serverName string) (string, ed25519.PublicKey, error)
 
 type Handler struct {
 	sysService             *usecase.SystemService
@@ -22,15 +28,17 @@ type Handler struct {
 	roomInteractionService *usecase.RoomInteractionService
 	profileService         *usecase.ProfileService
 	dirService             *usecase.DirectoryService
+	keyFetcher             KeyFetcherFn
 }
 
-func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService, profileService *usecase.ProfileService, dirService *usecase.DirectoryService) *Handler {
+func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService, profileService *usecase.ProfileService, dirService *usecase.DirectoryService, keyFetcher KeyFetcherFn) *Handler {
 	return &Handler{
 		sysService:             sysService,
 		fedService:             fedService,
 		roomInteractionService: roomInteractionService,
 		profileService:         profileService,
 		dirService:             dirService,
+		keyFetcher:             keyFetcher,
 	}
 }
 
@@ -49,6 +57,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /_matrix/federation/v1/publicRooms", h.getPublicRooms)
     mux.HandleFunc("POST /_matrix/federation/v1/publicRooms", h.postPublicRooms)
+
+	mux.HandleFunc("GET /_matrix/federation/v1/make_join/{roomId}/{userId}", h.makeJoin)
+	mux.HandleFunc("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", h.sendJoin)
 }
 
 
@@ -296,4 +307,154 @@ func (h *Handler) writePublicRooms(w http.ResponseWriter, r *http.Request, searc
     }
 
     httputil.WriteJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) makeJoin(w http.ResponseWriter, r *http.Request) {
+    roomID := r.PathValue("roomId")
+    userID := r.PathValue("userId")
+
+    supportedVersions := r.URL.Query()["ver"]
+    if len(supportedVersions) == 0 {
+        supportedVersions = []string{"1"}
+    }
+
+    result, err := h.fedService.MakeJoin(r.Context(), roomID, userID, supportedVersions)
+    if err != nil {
+        if errors.Is(err, types.ErrNotFound) {
+            httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Unknown room")
+            return
+        }
+        if errors.Is(err, usecase.ErrIncompatibleRoomVersion) {
+            httputil.WriteMatrixError(w, http.StatusBadRequest, "M_INCOMPATIBLE_ROOM_VERSION",
+                "Your homeserver does not support the features required to join this room")
+            return
+        }
+        if errors.Is(err, types.ErrForbidden) {
+            httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You are not invited to this room")
+            return
+        }
+        httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
+        return
+    }
+
+    resp := MakeJoinResponse{
+        RoomVersion: result.RoomVersion,
+        Event: EventTemplate{
+            Type:           "m.room.member",
+            Sender:         result.Sender,
+            StateKey:       result.Sender,
+            RoomID:         result.RoomID,
+            Origin:         result.Origin,
+            OriginServerTS: result.Timestamp,
+            Content:        MembershipContent{Membership: "join"},
+        },
+    }
+
+    httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) sendJoin(w http.ResponseWriter, r *http.Request) {
+    roomID := r.PathValue("roomId")
+
+    var req SendJoinRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
+        return
+    }
+
+    // Validações obrigatórias pela spec
+    if req.Type != "m.room.member" {
+        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "event type must be m.room.member")
+        return
+    }
+    if req.Content.Membership != "join" {
+        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "membership must be join")
+        return
+    }
+    if req.Sender != req.StateKey {
+        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "sender must equal state_key")
+        return
+    }
+    senderParts := strings.SplitN(req.Sender, ":", 2)
+    if len(senderParts) != 2 || senderParts[1] != req.Origin {
+        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "sender must belong to the origin server")
+        return
+    }
+
+    // Verifica a assinatura ed25519
+    if err := h.verifyEventSignature(req); err != nil {
+        httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "invalid event signature: "+err.Error())
+        return
+    }
+
+    // Constrói o evento interno a partir do request
+    stateKey := req.Sender
+    contentBytes, _ := json.Marshal(req.Content)
+    joinEvent := &domain.Evento{
+        ID:               req.EventID,
+        Tipo:             req.Type,
+        CanalID:          roomID,
+        Sender:           req.Sender,
+        StateKey:         &stateKey,
+        Content:          json.RawMessage(contentBytes),
+        OrigemServidorTS: req.OriginServerTS,
+    }
+
+    result, err := h.fedService.ProcessSendJoin(r.Context(), roomID, joinEvent)
+    if err != nil {
+        if errors.Is(err, types.ErrNotFound) {
+            httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Unknown room")
+            return
+        }
+        httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())
+        return
+    }
+
+    httputil.WriteJSON(w, http.StatusOK, SendJoinResponse{
+        State:         result.StateEvents,
+        AuthChain:     result.StateEvents, // simplificação: auth chain = estado atual
+        ServersInRoom: result.ServersInRoom,
+    })
+}
+
+// verifyEventSignature verifica a assinatura ed25519 do PDU recebido.
+func (h *Handler) verifyEventSignature(req SendJoinRequest) error {
+    serverSigs, ok := req.Signatures[req.Origin]
+    if !ok {
+        return fmt.Errorf("no signature from origin server %s", req.Origin)
+    }
+
+    keyID, pubKey, err := h.keyFetcher(req.Origin)
+    if err != nil {
+        return fmt.Errorf("could not fetch public key: %w", err)
+    }
+
+    sig, ok := serverSigs[keyID]
+    if !ok {
+        return fmt.Errorf("no signature for key %s", keyID)
+    }
+
+    sigBytes, err := base64.RawStdEncoding.DecodeString(sig)
+    if err != nil {
+        return fmt.Errorf("invalid signature encoding: %w", err)
+    }
+
+    payload := map[string]interface{}{
+        "content":          req.Content,
+        "origin":           req.Origin,
+        "origin_server_ts": req.OriginServerTS,
+        "room_id":          req.RoomID,
+        "sender":           req.Sender,
+        "state_key":        req.StateKey,
+        "type":             req.Type,
+    }
+    canonical, err := util.CanonicalJSON(payload)
+    if err != nil {
+        return fmt.Errorf("failed to canonicalize event: %w", err)
+    }
+
+    if !ed25519.Verify(pubKey, canonical, sigBytes) {
+        return fmt.Errorf("signature verification failed")
+    }
+    return nil
 }

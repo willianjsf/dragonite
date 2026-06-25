@@ -54,3 +54,45 @@ type PublicRoomsRequest struct {
     Since                string             `json:"since,omitempty"`
     ThirdPartyInstanceID string             `json:"third_party_instance_id,omitempty"`
 }
+
+// make_join 
+
+type MembershipContent struct {
+    JoinAuthorisedViaUsersServer string `json:"join_authorised_via_users_server,omitempty"`
+    Membership                   string `json:"membership"`
+}
+
+type EventTemplate struct {
+    Content        MembershipContent `json:"content"`
+    Origin         string            `json:"origin"`
+    OriginServerTS int64             `json:"origin_server_ts"`
+    RoomID         string            `json:"room_id"`
+    Sender         string            `json:"sender"`
+    StateKey       string            `json:"state_key"`
+    Type           string            `json:"type"`
+}
+
+type MakeJoinResponse struct {
+    Event       EventTemplate `json:"event"`
+    RoomVersion string        `json:"room_version"`
+}
+
+// send_join
+
+type SendJoinRequest struct {
+    Content        MembershipContent            `json:"content"`
+    Origin         string                       `json:"origin"`
+    OriginServerTS int64                        `json:"origin_server_ts"`
+    Sender         string                       `json:"sender"`
+    StateKey       string                       `json:"state_key"`
+    Type           string                       `json:"type"`
+    RoomID         string                       `json:"room_id"`
+    EventID        string                       `json:"event_id"`
+    Signatures     map[string]map[string]string `json:"signatures"`
+}
+
+type SendJoinResponse struct {
+    AuthChain     []domain.Evento `json:"auth_chain"`
+    State         []domain.Evento `json:"state"`
+    ServersInRoom []string        `json:"servers_in_room,omitempty"`
+}
