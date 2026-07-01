@@ -98,8 +98,8 @@ func (s *PostgresStorage) GetEventsSince(ctx context.Context, roomID string, lim
 			JOIN dag_backfill db ON e.id_evento = ANY(db.prev_eventos)
 			WHERE db.distance < $3
 		)
-		SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key
-		FROM Evento
+		SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, stream_ordering, state_key, prev_eventos, auth_eventos, depth
+		FROM dag_backfill
 		ORDER BY depth DESC, distance ASC
 		LIMIT $3;
 	`
