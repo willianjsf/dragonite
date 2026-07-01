@@ -1,12 +1,16 @@
 package federation
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,7 +31,7 @@ func (s *fakeSystemStorage) PingDB() map[string]string {
 func TestFederationGetVersion(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("example.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	h := NewHandler(sys, nil, nil, nil, nil, nil, "example.com")
+	h := NewHandler(sys, nil, nil, nil, nil, nil, nil, "example.com")
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/federation/v1/version", nil)
@@ -50,7 +54,7 @@ func TestFederationGetVersion(t *testing.T) {
 func TestFederationGetServerKeySignature(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("example.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
-	h := NewHandler(sys, nil, nil, nil, nil, nil, "example.com")
+	h := NewHandler(sys, nil, nil, nil, nil, nil, nil, "example.com")
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/key/v2/server", nil)
@@ -133,7 +137,7 @@ func newTestHandlerWithProfile(t *testing.T, storage *fakeUsuarioStorage) *Handl
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
 	profileSvc := usecase.NewProfileService(storage)
-	return NewHandler(sys, nil, nil, profileSvc, nil, nil, "example.com")
+	return NewHandler(sys, nil, nil, profileSvc, nil, nil, nil, "example.com")
 }
 
 func TestGetProfile_MissingUserID(t *testing.T) {
@@ -302,7 +306,7 @@ func newTestHandlerWithDir(t *testing.T, storage *fakeDirectoryStorage) *Handler
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
 	dirSvc := usecase.NewDirectoryService(storage, nil, nil)
-	return NewHandler(sys, nil, nil, nil, dirSvc, nil, "example.com")
+	return NewHandler(sys, nil, nil, nil, dirSvc, nil, nil, "example.com")
 }
 
 func TestGetPublicRooms_Empty(t *testing.T) {
@@ -573,7 +577,7 @@ func newTestHandlerWithFed(t *testing.T, canalStore *fakeFedCanalStore, eventoSt
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
 	fedSvc := usecase.NewFederationService("dragonite.com", "ed25519:1", priv, canalStore, eventoStore, &fakeFedWorkUnit{})
-	return NewHandler(sys, fedSvc, nil, nil, nil, nil, "example.com")
+	return NewHandler(sys, fedSvc, nil, nil, nil, nil, nil, "example.com")
 }
 
 // Testes makeJoin
@@ -1321,5 +1325,112 @@ func TestSendLeave_HappyPath(t *testing.T) {
 	}
 	if len(respBody) != 0 {
 		t.Errorf("expected empty response body, got %v", respBody)
+	}
+}
+
+// fakeFileStorage e fakeMidiaStorage implementam usecase.FileStorage e usecase.MidiaStorage para testar o proxy de mídia via federação
+
+type fakeFileStorage struct {
+	content []byte
+}
+
+func (f *fakeFileStorage) Upload(_ context.Context, _ string, _ io.Reader, _ int64, _ string) error {
+	return nil
+}
+func (f *fakeFileStorage) Download(_ context.Context, _ string) (io.ReadCloser, error) {
+	if f.content == nil {
+		return nil, fmt.Errorf("not found")
+	}
+	return io.NopCloser(bytes.NewReader(f.content)), nil
+}
+func (f *fakeFileStorage) Delete(_ context.Context, _ string) error { return nil }
+
+
+type fakeMidiaStorage struct {
+	midia *domain.Midia
+}
+
+func (f *fakeMidiaStorage) SaveMidia(_ context.Context, _ *domain.Midia) error { return nil }
+func (f *fakeMidiaStorage) GetMidiaByID(_ context.Context, _, _ string) (*domain.Midia, error) {
+	return f.midia, nil
+}
+
+func newTestHandlerWithMedia(t *testing.T, mediaSvc *usecase.MediaService) *Handler {
+	t.Helper()
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	sys := usecase.NewSystemService("dragonite.com", "1.0.0", pub, priv, "ed25519:1", &fakeSystemStorage{})
+	return NewHandler(sys, nil, nil, nil, nil, mediaSvc, nil, "example.com")
+}
+
+// Testes getMediaDownload
+
+func TestGetMediaDownload_NotFound(t *testing.T) {
+	mediaSvc := usecase.NewMediaService("dragonite.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0, nil)
+	h := newTestHandlerWithMedia(t, mediaSvc)
+
+	server := newMuxServer("GET /_matrix/federation/v1/media/download/{mediaId}", h.getMediaDownload)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/_matrix/federation/v1/media/download/abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetMediaDownload_HappyPath(t *testing.T) {
+	fileContent := []byte("hello world")
+	fileStore := &fakeFileStorage{content: fileContent}
+	midiaStore := &fakeMidiaStorage{midia: &domain.Midia{
+		IDMidia:     "abc123",
+		Origin:      "dragonite.com",
+		ContentType: "text/plain",
+		SizeBytes:   int64(len(fileContent)),
+		UploadName:  "hello.txt",
+	}}
+	mediaSvc := usecase.NewMediaService("dragonite.com", fileStore, midiaStore, 0, nil)
+	h := newTestHandlerWithMedia(t, mediaSvc)
+
+	server := newMuxServer("GET /_matrix/federation/v1/media/download/{mediaId}", h.getMediaDownload)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/_matrix/federation/v1/media/download/abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	mediaType, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if err != nil || !strings.HasPrefix(mediaType, "multipart/") {
+		t.Fatalf("expected multipart response, got %q (err=%v)", resp.Header.Get("Content-Type"), err)
+	}
+
+	mr := multipart.NewReader(resp.Body, params["boundary"])
+
+	if _, err := mr.NextPart(); err != nil {
+		t.Fatalf("failed to read metadata part: %v", err)
+	}
+
+	filePart, err := mr.NextPart()
+	if err != nil {
+		t.Fatalf("failed to read file part: %v", err)
+	}
+	fileBytes, err := io.ReadAll(filePart)
+	if err != nil {
+		t.Fatalf("failed to read file content: %v", err)
+	}
+	if string(fileBytes) != string(fileContent) {
+		t.Errorf("expected file content %q, got %q", fileContent, fileBytes)
+	}
+	if filePart.Header.Get("Content-Type") != "text/plain" {
+		t.Errorf("expected content-type text/plain, got %q", filePart.Header.Get("Content-Type"))
 	}
 }

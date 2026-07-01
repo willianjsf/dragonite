@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -518,4 +521,93 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 		return nil
 	})
 	return err
+}
+
+// FetchRemoteMedia busca um arquivo de mídia hospedado em um servidor Matrix remoto, para
+// implementar o proxy de GET /_matrix/client/v1/media/download/{serverName}/{mediaId} quando
+// serverName não é o nosso próprio servidor
+// O io.ReadCloser retornado envolve a conexão HTTP inteira: fechar ele fecha o socket também,
+// então o chamador NÃO deve fechar resp.Body separadamente
+func (f *FederationService) FetchRemoteMedia(ctx context.Context, destServerName, mediaID string) (io.ReadCloser, string, string, error) {
+	targetHost, err := util.ResolveServerName(destServerName)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("failed to resolve remote server %s: %w", destServerName, err)
+	}
+ 
+	uri := fmt.Sprintf("/_matrix/federation/v1/media/download/%s", mediaID)
+ 
+	// Requisição GET sem corpo, assinamos com um payload vazio, que é o padrão do
+	// protocolo Matrix (X-Matrix) para requisições sem body
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "GET", uri, destServerName, nil)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("failed to sign media request: %w", err)
+	}
+ 
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("failed to build request: %w", err)
+	}
+	req.Header.Set("Authorization", authHeader)
+ 
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("failed to contact remote server %s: %w", destServerName, err)
+	}
+ 
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, "", "", fmt.Errorf("remote server %s returned status %d: %s", destServerName, resp.StatusCode, string(bodyBytes))
+	}
+ 
+	mediaType, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if err != nil || !strings.HasPrefix(mediaType, "multipart/") {
+		resp.Body.Close()
+		return nil, "", "", fmt.Errorf("response from remote server %s is not multipart/mixed (Content-Type=%q): %v", destServerName, resp.Header.Get("Content-Type"), err)
+	}
+ 
+	mr := multipart.NewReader(resp.Body, params["boundary"])
+ 
+	// Primeira parte: metadados JSON do MSC3916 (normalmente vazio, ou info de redirect). (Ignoramos)
+	if _, err := mr.NextPart(); err != nil {
+		resp.Body.Close()
+		return nil, "", "", fmt.Errorf("failed to read metadata part from multipart response: %w", err)
+	}
+ 
+	// Segunda parte: o arquivo em si
+	filePart, err := mr.NextPart()
+	if err != nil {
+		resp.Body.Close()
+		return nil, "", "", fmt.Errorf("failed to read file part from multipart response: %w", err)
+	}
+ 
+	contentType := filePart.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+ 
+	filename := ""
+	if _, dispParams, err := mime.ParseMediaType(filePart.Header.Get("Content-Disposition")); err == nil {
+		filename = dispParams["filename"]
+	}
+ 
+	return &remoteMediaReadCloser{part: filePart, resp: resp}, contentType, filename, nil
+}
+ 
+// remoteMediaReadCloser adapta um multipart.Part (que não tem Close) para io.ReadCloser,
+// garantindo que fechar o resultado também feche a conexão HTTP subjacente (resp.Body).
+// Sem isso, a conexão ficaria vazando até o garbage collector eventualmente liberá-la
+type remoteMediaReadCloser struct {
+	part *multipart.Part
+	resp *http.Response
+}
+ 
+func (r *remoteMediaReadCloser) Read(p []byte) (int, error) {
+	return r.part.Read(p)
+}
+ 
+func (r *remoteMediaReadCloser) Close() error {
+	return r.resp.Body.Close()
 }

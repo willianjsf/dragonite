@@ -31,14 +31,31 @@ func (f *routeFileStore) Download(_ context.Context, _ string) (io.ReadCloser, e
 func (f *routeFileStore) Delete(_ context.Context, _ string) error { return nil }
 
 type routeMidiaStore struct {
-	saveErr error
+	saveErr   error
+	getResult *domain.Midia
+	getErr    error
 }
 
 func (f *routeMidiaStore) SaveMidia(_ context.Context, _ *domain.Midia) error {
 	return f.saveErr
 }
 func (f *routeMidiaStore) GetMidiaByID(_ context.Context, _, _ string) (*domain.Midia, error) {
-	return nil, nil
+	return f.getResult, f.getErr
+}
+
+// routeRemoteFetcher simula FederationService.FetchRemoteMedia para testar o proxy federado
+type routeRemoteFetcher struct {
+	content     string
+	contentType string
+	filename    string
+	err         error
+}
+ 
+func (f *routeRemoteFetcher) FetchRemoteMedia(_ context.Context, _, _ string) (io.ReadCloser, string, string, error) {
+	if f.err != nil {
+		return nil, "", "", f.err
+	}
+	return io.NopCloser(strings.NewReader(f.content)), f.contentType, f.filename, nil
 }
 
 // ctxWithUser injeta o userID no context
@@ -46,10 +63,10 @@ func ctxWithUser(userID string) context.Context {
 	return context.WithValue(context.Background(), types.UserIDKey, userID)
 }
 
-// Testes 
+// Testes de Upload
 
 func TestUploadMediaSuccess(t *testing.T) {
-	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 10*1024*1024)
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 10*1024*1024, nil)
 	h := NewHandler(svc)
 
 	content := []byte("file content")
@@ -76,7 +93,7 @@ func TestUploadMediaSuccess(t *testing.T) {
 
 func TestUploadMediaTooLargeByContentLength(t *testing.T) {
 	// Rejeição via Content-Length (< 5 bytes de limite, header diz 999)
-	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 5)
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 5, nil)
 	h := NewHandler(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/media/v3/upload", strings.NewReader("x"))
@@ -94,7 +111,7 @@ func TestUploadMediaTooLargeByContentLength(t *testing.T) {
 
 func TestUploadMediaTooLargeByBody(t *testing.T) {
 	// Rejeição via LimitReader quando Content-Length não é enviado
-	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 5)
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 5, nil)
 	h := NewHandler(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/media/v3/upload", strings.NewReader("123456789"))
@@ -112,7 +129,7 @@ func TestUploadMediaTooLargeByBody(t *testing.T) {
 
 func TestUploadMediaDefaultContentType(t *testing.T) {
 	// Sem Content-Type no header → deve usar application/octet-stream e retornar 200
-	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 0)
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 0, nil)
 	h := NewHandler(svc)
 
 	content := []byte("raw bytes")
@@ -131,7 +148,7 @@ func TestUploadMediaDefaultContentType(t *testing.T) {
 func TestUploadMediaInternalError(t *testing.T) {
 	// Falha no MinIO → deve retornar 500 M_UNKNOWN
 	fileStore := &routeFileStore{uploadErr: errors.New("minio down")}
-	svc := usecase.NewMediaService("example.com", fileStore, &routeMidiaStore{}, 0)
+	svc := usecase.NewMediaService("example.com", fileStore, &routeMidiaStore{}, 0, nil)
 	h := NewHandler(svc)
 
 	content := []byte("data")
@@ -160,3 +177,155 @@ func assertErrCode(t *testing.T, rec *httptest.ResponseRecorder, expected string
 		t.Fatalf("expected errcode %s, got %s", expected, resp.ErrCode)
 	}
 }
+
+
+func newDownloadRequest(path, serverName, mediaID string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.SetPathValue("serverName", serverName)
+	req.SetPathValue("mediaId", mediaID)
+	return req.WithContext(ctxWithUser("@alice:example.com"))
+}
+ 
+// Testes de downloadMedia
+
+func TestDownloadMediaLocalSuccess(t *testing.T) {
+	midiaStore := &routeMidiaStore{getResult: &domain.Midia{
+		IDMidia:     "abc123",
+		Origin:      "example.com",
+		ContentType: "image/png",
+		UploadName:  "avatar.png",
+	}}
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, midiaStore, 0, nil)
+	h := NewHandler(svc)
+ 
+	req := newDownloadRequest("/_matrix/client/v1/media/download/example.com/abc123", "example.com", "abc123")
+	rec := httptest.NewRecorder()
+	h.downloadMedia(rec, req)
+ 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d — body: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/png" {
+		t.Fatalf("expected Content-Type image/png, got %s", ct)
+	}
+	disposition := rec.Header().Get("Content-Disposition")
+	if !strings.HasPrefix(disposition, "inline") {
+		t.Fatalf("expected inline disposition for image/png, got %s", disposition)
+	}
+	if !strings.Contains(disposition, `filename="avatar.png"`) {
+		t.Fatalf("expected filename in disposition, got %s", disposition)
+	}
+}
+ 
+func TestDownloadMediaNotFound(t *testing.T) {
+	midiaStore := &routeMidiaStore{getResult: nil}
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, midiaStore, 0, nil)
+	h := NewHandler(svc)
+ 
+	req := newDownloadRequest("/_matrix/client/v1/media/download/example.com/nao-existe", "example.com", "nao-existe")
+	rec := httptest.NewRecorder()
+	h.downloadMedia(rec, req)
+ 
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+	assertErrCode(t, rec, "M_NOT_FOUND")
+}
+ 
+func TestDownloadMediaMissingPathParams(t *testing.T) {
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 0, nil)
+	h := NewHandler(svc)
+ 
+	// serverName e mediaId não foram setados via SetPathValue
+	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v1/media/download//", nil)
+	req = req.WithContext(ctxWithUser("@alice:example.com"))
+	rec := httptest.NewRecorder()
+	h.downloadMedia(rec, req)
+ 
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	assertErrCode(t, rec, "M_BAD_JSON")
+}
+ 
+func TestDownloadMediaRemoteProxiesViaFederation(t *testing.T) {
+	fetcher := &routeRemoteFetcher{
+		content:     "bytes remotos",
+		contentType: "application/pdf",
+		filename:    "doc.pdf",
+	}
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 0, fetcher)
+	h := NewHandler(svc)
+ 
+	req := newDownloadRequest("/_matrix/client/v1/media/download/outroservidor.com/xyz789", "outroservidor.com", "xyz789")
+	rec := httptest.NewRecorder()
+	h.downloadMedia(rec, req)
+ 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d — body: %s", rec.Code, rec.Body.String())
+	}
+	// application/pdf não está na lista inline-safe (image/audio/video/text) → attachment
+	disposition := rec.Header().Get("Content-Disposition")
+	if !strings.HasPrefix(disposition, "attachment") {
+		t.Fatalf("expected attachment disposition for application/pdf, got %s", disposition)
+	}
+	if rec.Body.String() != "bytes remotos" {
+		t.Fatalf("expected proxied body, got %s", rec.Body.String())
+	}
+}
+ 
+func TestDownloadMediaRemoteWithoutFederationIsNotFound(t *testing.T) {
+	// Sem RemoteMediaFetcher configurado, pedir mídia de outro servidor deve dar 404, não 500
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, &routeMidiaStore{}, 0, nil)
+	h := NewHandler(svc)
+ 
+	req := newDownloadRequest("/_matrix/client/v1/media/download/outroservidor.com/xyz789", "outroservidor.com", "xyz789")
+	rec := httptest.NewRecorder()
+	h.downloadMedia(rec, req)
+ 
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+	assertErrCode(t, rec, "M_NOT_FOUND")
+}
+ 
+// Testes de thumbnailMedia 
+ 
+func TestThumbnailMediaReturnsOriginalFile(t *testing.T) {
+	// confirma a simplificação: thumbnail devolve o arquivo original, sem redimensionar
+	midiaStore := &routeMidiaStore{getResult: &domain.Midia{
+		IDMidia:     "abc123",
+		Origin:      "example.com",
+		ContentType: "image/jpeg",
+		UploadName:  "photo.jpg",
+	}}
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, midiaStore, 0, nil)
+	h := NewHandler(svc)
+ 
+	req := newDownloadRequest("/_matrix/client/v1/media/thumbnail/example.com/abc123", "example.com", "abc123")
+	rec := httptest.NewRecorder()
+	h.thumbnailMedia(rec, req)
+ 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d — body: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "image/jpeg" {
+		t.Fatalf("expected Content-Type image/jpeg (original), got %s", ct)
+	}
+}
+ 
+func TestThumbnailMediaNotFound(t *testing.T) {
+	midiaStore := &routeMidiaStore{getResult: nil}
+	svc := usecase.NewMediaService("example.com", &routeFileStore{}, midiaStore, 0, nil)
+	h := NewHandler(svc)
+ 
+	req := newDownloadRequest("/_matrix/client/v1/media/thumbnail/example.com/nao-existe", "example.com", "nao-existe")
+	rec := httptest.NewRecorder()
+	h.thumbnailMedia(rec, req)
+ 
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+	assertErrCode(t, rec, "M_NOT_FOUND")
+}
+ 

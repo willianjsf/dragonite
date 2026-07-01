@@ -99,3 +99,13 @@ type FileStorage interface {
 	// Delete remove permanentemente o arquivo do object storage.
 	Delete(ctx context.Context, mediaID string) error
 }
+
+// RemoteMediaFetcher busca um arquivo de mídia hospedado em OUTRO servidor Matrix via federação (S2S)
+// Deixar como interface (em vez de acoplar *FederationService direto)
+// permite testar o MediaService com um fake, sem precisar de rede.
+type RemoteMediaFetcher interface {
+	// FetchRemoteMedia busca o arquivo mediaID hospedado em destServerName
+	// content deve ser fechado pelo chamador e contentType e filename 
+	// podem vir vazios se o servidor remoto não os informar
+	FetchRemoteMedia(ctx context.Context, destServerName, mediaID string) (content io.ReadCloser, contentType, filename string, err error)
+}
