@@ -16,7 +16,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
 
-// Fakes 
+// Fakes
 
 type routeFileStore struct {
 	uploadErr error
