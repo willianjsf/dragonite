@@ -179,3 +179,54 @@ func (s *PostgresStorage) GetCurrentStateEvents(ctx context.Context, roomID stri
 	}
 	return eventos, nil
 }
+
+func (s *PostgresStorage) GetRoomMessagesHistory(ctx context.Context, roomID string, fromToken int64, dir string, limit int) ([]domain.Evento, error) {
+	var query string
+	var args []interface{} // Faremos um slice com os argumentos da query
+
+	// A paginação depende da direção ("b" ou "f") e se um token foi fornecido
+	if dir == "b" {
+		if fromToken == 0 {
+			// Se não há token e vamos para trás, trazemos os mais recentes
+			query = `SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, state_key, stream_ordering
+					 FROM Evento WHERE id_canal = $1 ORDER BY stream_ordering DESC LIMIT $2`
+			args = []interface{}{roomID, limit}
+		} else {
+			// Se há token, trazemos os mais antigos do que o token
+			query = `SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, state_key, stream_ordering
+					 FROM Evento WHERE id_canal = $1 AND stream_ordering < $2 ORDER BY stream_ordering DESC LIMIT $3`
+			args = []interface{}{roomID, fromToken, limit}
+		}
+	} else {
+		// Direção "f" (forward): trazemos os eventos mais recentes do que o token
+		query = `SELECT id_evento, tipo, id_canal, sender, origin_server_ts, content, state_key, stream_ordering
+				 FROM Evento WHERE id_canal = $1 AND stream_ordering > $2 ORDER BY stream_ordering ASC LIMIT $3`
+		args = []interface{}{roomID, fromToken, limit}
+	}
+
+	// Usamos ':=' para o Go inferir automaticamente que 'rows' é do tipo pgx.Rows
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute history query: %w", err)
+	}
+	defer rows.Close()
+
+	var eventos []domain.Evento
+	for rows.Next() {
+		var event domain.Evento
+		var stateKey sql.NullString
+		err := rows.Scan(
+			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
+			&event.OrigemServidorTS, &event.Content, &stateKey, &event.StreamOrdering,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan event for history: %w", err)
+		}
+		if stateKey.Valid {
+			event.StateKey = &stateKey.String
+		}
+		eventos = append(eventos, event)
+	}
+
+	return eventos, nil
+}

@@ -59,6 +59,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	// sem stateKey — stateKey vazio, trailing slash opcional (ex: /state/m.room.name ou /state/m.room.name/)
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.putStateEvent)))
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/messages", authMiddleware(http.HandlerFunc(h.getRoomMessages)))
 }
 
 // getPublicRooms lista as salas públicas do servidor.
@@ -331,4 +332,54 @@ func (h *Handler) putStateEvent(w http.ResponseWriter, r *http.Request) {
 
 	// 6. Return Success
 	httputil.WriteJSON(w, http.StatusOK, StateEventResponse{EventID: eventID})
+}
+
+// getRoomMessages retorna o histórico de eventos de uma sala
+// GET /_matrix/client/v3/rooms/{roomId}/messages
+// https://spec.matrix.org/v1.18/client-server-api/#get_matrixclientv3roomsroomidmessages
+func (h *Handler) getRoomMessages(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+    if !ok || userID == "" {
+        httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, "Missing or invalid access token")
+        return
+    }
+
+	roomID := r.PathValue("roomId")
+	if roomID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing roomId path parameter")
+		return
+	}
+
+    from := r.URL.Query().Get("from");
+    dir := r.URL.Query().Get("dir");
+
+    if dir == "" {
+		dir = "b" // "b" (backwards) é o padrão do Matrix
+	}
+
+    limitStr := r.URL.Query().Get("limit");
+    limit := 10 // Padrão recomendado pelo spec
+
+    if limitStr != "" {
+    	if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+     		limit = parsed
+     }
+    }
+
+    response, err := h.roomInteractions.GetMessages(ctx, roomID, userID, from, dir, limit)
+    if err != nil {
+    	if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You do not have permission to read this room's history")
+			return
+		}
+		log.Printf("[ERROR] GET /messages: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get room messages")
+		return
+    }
+
+    httputil.WriteJSON(w, http.StatusOK, response)
+
 }
