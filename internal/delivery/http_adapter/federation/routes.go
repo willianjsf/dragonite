@@ -9,7 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"maps"
+	"mime/multipart"
+	"net/textproto"
 	"net/http"
 	"strconv"
 	"strings"
@@ -32,18 +35,20 @@ type Handler struct {
 	roomInteractionService *usecase.RoomInteractionService
 	profileService         *usecase.ProfileService
 	dirService             *usecase.DirectoryService
+	mediaService           *usecase.MediaService
 	keyFetcher             KeyFetcherFn
 	serverName             string
 	keyCache               sync.Map // map["origin/keyID"]ed25519.PublicKey
 }
 
-func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService, profileService *usecase.ProfileService, dirService *usecase.DirectoryService, keyFetcher KeyFetcherFn, serverName string) *Handler {
+func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService, profileService *usecase.ProfileService, dirService *usecase.DirectoryService, mediaService *usecase.MediaService, keyFetcher KeyFetcherFn, serverName string) *Handler {
 	return &Handler{
 		sysService:             sysService,
 		fedService:             fedService,
 		roomInteractionService: roomInteractionService,
 		profileService:         profileService,
 		dirService:             dirService,
+		mediaService:           mediaService,
 		keyFetcher:             keyFetcher,
 		serverName:             serverName,
 	}
@@ -67,6 +72,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /_matrix/federation/v2/send_join/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendJoin)))
 	mux.Handle("GET /_matrix/federation/v1/make_leave/{roomId}/{userId}", auth(http.HandlerFunc(h.makeLeave)))
 	mux.Handle("PUT /_matrix/federation/v2/send_leave/{roomId}/{eventId}", auth(http.HandlerFunc(h.sendLeave)))
+	mux.Handle("GET /_matrix/federation/v1/media/download/{mediaId}", auth(http.HandlerFunc(h.getMediaDownload)))
 }
 
 func (h *Handler) getVersion(w http.ResponseWriter, r *http.Request) {
@@ -869,4 +875,82 @@ func (h *Handler) verifyRawEventSignature(eventMap map[string]interface{}, origi
 		return fmt.Errorf("signature verification failed")
 	}
 	return nil
+}
+
+// getMediaDownload serve uma mídia hospedada neste servidor para outro servidor Matrix federado
+// Este é o lado receptor do proxy implementado em FederationService.FetchRemoteMedia.
+func (h *Handler) getMediaDownload(w http.ResponseWriter, r *http.Request) {
+	mediaID := r.PathValue("mediaId")
+	if mediaID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing mediaId")
+		return
+	}
+
+	result, err := h.mediaService.DownloadLocal(r.Context(), mediaID)
+	if err != nil {
+		if errors.Is(err, usecase.ErrMediaNotFound) {
+			httputil.WriteMatrixError(w, http.StatusNotFound, httputil.M_NOT_FOUND, "Media not found")
+			return
+		}
+		log.Printf("[ERROR] GET /_matrix/federation/v1/media/download/%s: %v", mediaID, err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to retrieve media")
+		return
+	}
+	defer result.Content.Close()
+
+	writeMultipartMediaResponse(w, result)
+}
+
+// writeMultipartMediaResponse escreve a mídia no formato multipart/mixed exigido para respostas de download via federação
+func writeMultipartMediaResponse(w http.ResponseWriter, result *usecase.DownloadResult) {
+	mw := multipart.NewWriter(w)
+	w.Header().Set("Content-Type", fmt.Sprintf("multipart/mixed; boundary=%s", mw.Boundary()))
+	w.WriteHeader(http.StatusOK)
+
+	metaHeader := textproto.MIMEHeader{}
+	metaHeader.Set("Content-Type", "application/json")
+	metaPart, err := mw.CreatePart(metaHeader)
+	if err != nil {
+		log.Printf("[ERROR] failed to create metadata part: %v", err)
+		return
+	}
+	if _, err := metaPart.Write([]byte("{}")); err != nil {
+		log.Printf("[ERROR] failed to write metadata part: %v", err)
+		return
+	}
+
+	disposition := "attachment"
+	if isInlineSafe(result.ContentType) {
+		disposition = "inline"
+	}
+	if result.Filename != "" {
+		disposition = fmt.Sprintf(`%s; filename="%s"`, disposition, result.Filename)
+	}
+
+	fileHeader := textproto.MIMEHeader{}
+	fileHeader.Set("Content-Type", result.ContentType)
+	fileHeader.Set("Content-Disposition", disposition)
+	filePart, err := mw.CreatePart(fileHeader)
+	if err != nil {
+		log.Printf("[ERROR] failed to create file part: %v", err)
+		return
+	}
+	if _, err := io.Copy(filePart, result.Content); err != nil {
+		log.Printf("[ERROR] failed to stream file part: %v", err)
+		return
+	}
+
+	if err := mw.Close(); err != nil {
+		log.Printf("[ERROR] failed to close multipart writer: %v", err)
+	}
+}
+
+// isInlineSafe retorna true para tipos de conteúdo seguros para exibição inline
+func isInlineSafe(contentType string) bool {
+	for _, prefix := range []string{"image/", "audio/", "video/", "text/"} {
+		if strings.HasPrefix(contentType, prefix) {
+			return true
+		}
+	}
+	return false
 }

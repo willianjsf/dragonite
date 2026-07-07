@@ -59,6 +59,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	// sem stateKey — stateKey vazio, trailing slash opcional (ex: /state/m.room.name ou /state/m.room.name/)
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.putStateEvent)))
+	// marcação de leitura (mock)
+	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}", authMiddleware(http.HandlerFunc(h.postReceipt)))
+	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/read_markers", authMiddleware(http.HandlerFunc(h.postReadMarkers)))
 }
 
 // getPublicRooms lista as salas públicas do servidor.
@@ -118,10 +121,45 @@ func (h *Handler) postCreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Campos opcionais do body: *string -> string, usando "" quando ausentes
+	// (a spec permite a omissão de todos eles)
+	var alias, name, topic, version string
+	if req.RoomAliasName != nil {
+		alias = *req.RoomAliasName
+	}
+	if req.Name != nil {
+		name = *req.Name
+	}
+	if req.Topic != nil {
+		topic = *req.Topic
+	}
+	if req.RoomVersion != nil {
+		version = *req.RoomVersion
+	}
+ 
+	// initial_state: converte do formato da requisição (schemas.InitialStateEvent)
+	// para o formato esperado pelo usecase (usecase.StateEventParams)
+	initialState := make([]usecase.StateEventParams, 0, len(req.InitialState))
+	for _, ev := range req.InitialState {
+		stateKey := ev.StateKey
+		initialState = append(initialState, usecase.StateEventParams{
+			StateKey: &stateKey,
+			Type:     ev.Type,
+			Content:  ev.Content,
+		})
+	}
+
 	params := usecase.CreateRoomParams{
-		CreatorID:  userID,
-		Visibility: req.Visibility,
-		Alias:      *req.RoomAliasName,
+		CreatorID: 	  userID,
+		Visibility:   req.Visibility,
+		Alias:        alias,
+		Name:         name,
+		Version:      version,
+		Topic:        topic,
+		Invite:       req.Invite,
+		IsDirect:     req.IsDirect,
+		InitialState: initialState,
+		Preset:       req.Preset,
 	}
 
 	canal, err := h.roomAdminService.CreateRoom(ctx, params)
@@ -331,4 +369,17 @@ func (h *Handler) putStateEvent(w http.ResponseWriter, r *http.Request) {
 
 	// 6. Return Success
 	httputil.WriteJSON(w, http.StatusOK, StateEventResponse{EventID: eventID})
+}
+
+// postReceipt é um mock para marcação de leitura 
+// POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}
+func (h *Handler) postReceipt(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
+}
+
+// postReadMarkers é um mock para o fully read marker (m.fully_read) e, opcionalmente,
+// os read receipts (m.read / m.read.private) enviados no mesmo corpo.
+// POST /_matrix/client/v3/rooms/{roomId}/read_markers
+func (h *Handler) postReadMarkers(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }
