@@ -35,6 +35,8 @@ func (f *fakeFileStorage) Delete(_ context.Context, _ string) error {
 type fakeMidiaStorage struct {
 	saveErr    error
 	savedMidia *domain.Midia
+	getResult  *domain.Midia 
+	getErr     error
 }
 
 func (f *fakeMidiaStorage) SaveMidia(_ context.Context, midia *domain.Midia) error {
@@ -43,15 +45,36 @@ func (f *fakeMidiaStorage) SaveMidia(_ context.Context, midia *domain.Midia) err
 }
 
 func (f *fakeMidiaStorage) GetMidiaByID(_ context.Context, _, _ string) (*domain.Midia, error) {
-	return nil, nil
+	return f.getResult, f.getErr
 }
 
-// Testes
+// fakeRemoteFetcher simula o FederationService.FetchRemoteMedia sem nenhuma chamada de rede
+type fakeRemoteFetcher struct {
+	content     string
+	contentType string
+	filename    string
+	err         error
+	calledWith  struct {
+		serverName string
+		mediaID    string
+	}
+}
+ 
+func (f *fakeRemoteFetcher) FetchRemoteMedia(_ context.Context, destServerName, mediaID string) (io.ReadCloser, string, string, error) {
+	f.calledWith.serverName = destServerName
+	f.calledWith.mediaID = mediaID
+	if f.err != nil {
+		return nil, "", "", f.err
+	}
+	return io.NopCloser(strings.NewReader(f.content)), f.contentType, f.filename, nil
+}
+
+// Testes de Upload
 
 func TestMediaServiceUploadSuccess(t *testing.T) {
 	fileStore := &fakeFileStorage{}
 	midiaStore := &fakeMidiaStorage{}
-	svc := NewMediaService("example.com", fileStore, midiaStore, 10*1024*1024)
+	svc := NewMediaService("example.com", fileStore, midiaStore, 10*1024*1024, nil)
 
 	result, err := svc.Upload(context.Background(), UploadParams{
 		Content:     strings.NewReader("hello world"),
@@ -87,7 +110,7 @@ func TestMediaServiceUploadSuccess(t *testing.T) {
 func TestMediaServiceUploadDefaultContentType(t *testing.T) {
 	// ContentType vazio deve ser preenchido com application/octet-stream
 	midiaStore := &fakeMidiaStorage{}
-	svc := NewMediaService("example.com", &fakeFileStorage{}, midiaStore, 0)
+	svc := NewMediaService("example.com", &fakeFileStorage{}, midiaStore, 0, nil)
 
 	_, err := svc.Upload(context.Background(), UploadParams{
 		Content:    strings.NewReader("data"),
@@ -109,7 +132,7 @@ func TestMediaServiceUploadDefaultContentType(t *testing.T) {
 
 func TestMediaServiceUploadTooLargeByContentLength(t *testing.T) {
 	// Rejeição rápida pelo Content-Length antes mesmo de ler o corpo
-	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 100)
+	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 100, nil)
 
 	_, err := svc.Upload(context.Background(), UploadParams{
 		Content:    strings.NewReader("x"),
@@ -124,7 +147,7 @@ func TestMediaServiceUploadTooLargeByContentLength(t *testing.T) {
 
 func TestMediaServiceUploadTooLargeByBody(t *testing.T) {
 	// Detecta arquivo grande via LimitReader quando Content-Length não é enviado
-	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 5)
+	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 5, nil)
 
 	_, err := svc.Upload(context.Background(), UploadParams{
 		Content:    strings.NewReader("123456789"), // 9 bytes > limite de 5
@@ -141,7 +164,7 @@ func TestMediaServiceUploadFileStorageError(t *testing.T) {
 	// Falha no MinIO deve retornar erro sem tentar salvar no DB
 	fileStore := &fakeFileStorage{uploadErr: errors.New("minio unavailable")}
 	midiaStore := &fakeMidiaStorage{}
-	svc := NewMediaService("example.com", fileStore, midiaStore, 0)
+	svc := NewMediaService("example.com", fileStore, midiaStore, 0, nil)
 
 	_, err := svc.Upload(context.Background(), UploadParams{
 		Content:    strings.NewReader("data"),
@@ -161,7 +184,7 @@ func TestMediaServiceUploadDBErrorTriggersRollback(t *testing.T) {
 	// MinIO ok + Postgres falha → arquivo deve ser deletado do MinIO (rollback compensatório)
 	fileStore := &fakeFileStorage{}
 	midiaStore := &fakeMidiaStorage{saveErr: errors.New("db connection lost")}
-	svc := NewMediaService("example.com", fileStore, midiaStore, 0)
+	svc := NewMediaService("example.com", fileStore, midiaStore, 0, nil)
 
 	_, err := svc.Upload(context.Background(), UploadParams{
 		Content:    strings.NewReader("data"),
@@ -179,9 +202,116 @@ func TestMediaServiceUploadDBErrorTriggersRollback(t *testing.T) {
 
 func TestMediaServiceUploadDefaultMaxSize(t *testing.T) {
 	// maxSizeBytes <= 0 deve usar DefaultMaxUploadBytes sem entrar em panic
-	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0)
+	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0, nil)
 
 	if svc.maxSizeBytes != DefaultMaxUploadBytes {
 		t.Fatalf("expected default max size %d, got %d", DefaultMaxUploadBytes, svc.maxSizeBytes)
+	}
+}
+
+// Testes de Download / Thumbnail
+ 
+func TestMediaServiceDownloadLocalSuccess(t *testing.T) {
+	midiaStore := &fakeMidiaStorage{getResult: &domain.Midia{
+		IDMidia:     "abc123",
+		Origin:      "example.com",
+		ContentType: "image/png",
+		UploadName:  "avatar.png",
+	}}
+	svc := NewMediaService("example.com", &fakeFileStorage{}, midiaStore, 0, nil)
+ 
+	result, err := svc.Download(context.Background(), "example.com", "abc123")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	defer result.Content.Close()
+ 
+	if result.ContentType != "image/png" {
+		t.Fatalf("expected content_type image/png, got %s", result.ContentType)
+	}
+	if result.Filename != "avatar.png" {
+		t.Fatalf("expected filename avatar.png, got %s", result.Filename)
+	}
+}
+ 
+func TestMediaServiceDownloadLocalNotFound(t *testing.T) {
+	// GetMidiaByID retorna nil, nil quando não encontrado, deve virar ErrMediaNotFound
+	midiaStore := &fakeMidiaStorage{getResult: nil}
+	svc := NewMediaService("example.com", &fakeFileStorage{}, midiaStore, 0, nil)
+ 
+	_, err := svc.Download(context.Background(), "example.com", "nao-existe")
+	if !errors.Is(err, ErrMediaNotFound) {
+		t.Fatalf("expected ErrMediaNotFound, got %v", err)
+	}
+}
+ 
+func TestMediaServiceDownloadRemoteProxiesToFetcher(t *testing.T) {
+	fetcher := &fakeRemoteFetcher{
+		content:     "conteúdo remoto",
+		contentType: "video/mp4",
+		filename:    "clip.mp4",
+	}
+	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0, fetcher)
+ 
+	result, err := svc.Download(context.Background(), "outroservidor.com", "xyz789")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	defer result.Content.Close()
+ 
+	if fetcher.calledWith.serverName != "outroservidor.com" {
+		t.Fatalf("expected fetcher called with outroservidor.com, got %s", fetcher.calledWith.serverName)
+	}
+	if fetcher.calledWith.mediaID != "xyz789" {
+		t.Fatalf("expected fetcher called with mediaID xyz789, got %s", fetcher.calledWith.mediaID)
+	}
+	if result.ContentType != "video/mp4" {
+		t.Fatalf("expected content_type video/mp4, got %s", result.ContentType)
+	}
+ 
+	body, _ := io.ReadAll(result.Content)
+	if string(body) != "conteúdo remoto" {
+		t.Fatalf("expected proxied content to match, got %s", string(body))
+	}
+}
+ 
+func TestMediaServiceDownloadRemoteWithoutFetcherIsNotFound(t *testing.T) {
+	// remoteFetcher nil (federação de mídia desabilitada) deve virar ErrMediaNotFound, não pânico
+	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0, nil)
+ 
+	_, err := svc.Download(context.Background(), "outroservidor.com", "xyz789")
+	if !errors.Is(err, ErrMediaNotFound) {
+		t.Fatalf("expected ErrMediaNotFound when remoteFetcher is nil, got %v", err)
+	}
+}
+ 
+func TestMediaServiceDownloadRemoteFetcherError(t *testing.T) {
+	fetcher := &fakeRemoteFetcher{err: errors.New("servidor remoto offline")}
+	svc := NewMediaService("example.com", &fakeFileStorage{}, &fakeMidiaStorage{}, 0, fetcher)
+ 
+	_, err := svc.Download(context.Background(), "outroservidor.com", "xyz789")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+ 
+func TestMediaServiceThumbnailReusesDownload(t *testing.T) {
+	// Thumbnail deve devolver exatamente o mesmo resultado que Download (sem redimensionar)
+	midiaStore := &fakeMidiaStorage{getResult: &domain.Midia{
+		IDMidia:     "abc123",
+		Origin:      "example.com",
+		ContentType: "image/jpeg",
+		UploadName:  "photo.jpg",
+	}}
+	svc := NewMediaService("example.com", &fakeFileStorage{}, midiaStore, 0, nil)
+ 
+	result, err := svc.Thumbnail(context.Background(), "example.com", "abc123")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	defer result.Content.Close()
+ 
+	if result.ContentType != "image/jpeg" {
+		t.Fatalf("expected content_type image/jpeg (original, no resizing), got %s", result.ContentType)
 	}
 }

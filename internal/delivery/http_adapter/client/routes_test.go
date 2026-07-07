@@ -133,6 +133,76 @@ func TestGetVersions(t *testing.T) {
 	}
 }
 
+func TestGetPushRules(t *testing.T) {
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/pushrules/", nil)
+
+	h.getPushRules(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp PushRulesResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Global == nil {
+		t.Fatalf("expected global key to be present in response")
+	}
+}
+
+func TestUploadFilterOK(t *testing.T) {
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	body := bytes.NewBufferString(`{"room":{"timeline":{"limit":10}}}`)
+	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user/@alice:example.com/filter", body)
+	req.SetPathValue("userId", "@alice:example.com")
+	rec := httptest.NewRecorder()
+
+	h.uploadFilter(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp FilterUploadResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.FilterID == "" {
+		t.Fatalf("expected filter_id to be set")
+	}
+}
+
+func TestUploadFilterInvalidJSON(t *testing.T) {
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	body := bytes.NewBufferString(`{invalid`)
+	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user/@alice:example.com/filter", body)
+	req.SetPathValue("userId", "@alice:example.com")
+	rec := httptest.NewRecorder()
+
+	h.uploadFilter(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+
+	var resp struct {
+		ErrCode string `json:"errcode"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if resp.ErrCode != "M_BAD_JSON" {
+		t.Fatalf("expected M_BAD_JSON, got %s", resp.ErrCode)
+	}
+}
+
 func TestSearchUsersOK(t *testing.T) {
 	display := "Alice"
 	avatar := "mxc://example.com/a"

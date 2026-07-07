@@ -60,7 +60,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.putStateEvent)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/messages", authMiddleware(http.HandlerFunc(h.getRoomMessages)))
+	// marcação de leitura (mock)
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}", authMiddleware(http.HandlerFunc(h.postReceipt)))
+	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/read_markers", authMiddleware(http.HandlerFunc(h.postReadMarkers)))
 }
 
 // getPublicRooms lista as salas públicas do servidor.
@@ -120,10 +122,45 @@ func (h *Handler) postCreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Campos opcionais do body: *string -> string, usando "" quando ausentes
+	// (a spec permite a omissão de todos eles)
+	var alias, name, topic, version string
+	if req.RoomAliasName != nil {
+		alias = *req.RoomAliasName
+	}
+	if req.Name != nil {
+		name = *req.Name
+	}
+	if req.Topic != nil {
+		topic = *req.Topic
+	}
+	if req.RoomVersion != nil {
+		version = *req.RoomVersion
+	}
+ 
+	// initial_state: converte do formato da requisição (schemas.InitialStateEvent)
+	// para o formato esperado pelo usecase (usecase.StateEventParams)
+	initialState := make([]usecase.StateEventParams, 0, len(req.InitialState))
+	for _, ev := range req.InitialState {
+		stateKey := ev.StateKey
+		initialState = append(initialState, usecase.StateEventParams{
+			StateKey: &stateKey,
+			Type:     ev.Type,
+			Content:  ev.Content,
+		})
+	}
+
 	params := usecase.CreateRoomParams{
-		CreatorID:  userID,
-		Visibility: req.Visibility,
-		Alias:      *req.RoomAliasName,
+		CreatorID: 	  userID,
+		Visibility:   req.Visibility,
+		Alias:        alias,
+		Name:         name,
+		Version:      version,
+		Topic:        topic,
+		Invite:       req.Invite,
+		IsDirect:     req.IsDirect,
+		InitialState: initialState,
+		Preset:       req.Preset,
 	}
 
 	canal, err := h.roomAdminService.CreateRoom(ctx, params)
