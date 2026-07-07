@@ -76,7 +76,7 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 		present = *props.Preset
 	}
 	var rulesEvent *domain.Evento
-	switch preset {
+	switch present {
 	case "public_chat":
 		rulesEvent = buildJoinRulesEvent(roomID, props.CreatorID, "public")
 	case "private_chat":

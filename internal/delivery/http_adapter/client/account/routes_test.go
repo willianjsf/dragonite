@@ -64,7 +64,10 @@ func TestPutAndGetUserAccountData(t *testing.T) {
 	// prepare request
 	body := bytes.NewBufferString(`{"foo":"bar"}`)
 	req := httptest.NewRequest(http.MethodPut, "/_matrix/client/v3/user/@alice:ex/account_data/com.example.test", body)
-	// call handler directly
+	// chamando o handler diretamente (sem passar pelo mux), então os path values
+	// precisam ser setados manualmente 
+	req.SetPathValue("userId", "@alice:ex")
+	req.SetPathValue("type", "com.example.test")
 	rec := httptest.NewRecorder()
 
 	h.putUserAccountData(rec, req)
@@ -76,6 +79,8 @@ func TestPutAndGetUserAccountData(t *testing.T) {
 	// now GET
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/user/@alice:ex/account_data/com.example.test", nil)
+	req.SetPathValue("userId", "@alice:ex")
+	req.SetPathValue("type", "com.example.test")
 
 	h.getUserAccountData(rec, req)
 	if rec.Code != http.StatusOK {

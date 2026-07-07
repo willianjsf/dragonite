@@ -134,7 +134,7 @@ func TestGetVersions(t *testing.T) {
 }
 
 func TestGetPushRules(t *testing.T) {
-	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/pushrules/", nil)
@@ -156,7 +156,7 @@ func TestGetPushRules(t *testing.T) {
 }
 
 func TestUploadFilterOK(t *testing.T) {
-	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{"room":{"timeline":{"limit":10}}}`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user/@alice:example.com/filter", body)
@@ -179,7 +179,7 @@ func TestUploadFilterOK(t *testing.T) {
 }
 
 func TestUploadFilterInvalidJSON(t *testing.T) {
-	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler("example.com", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{invalid`)
 	req := httptest.NewRequest(http.MethodPost, "/_matrix/client/v3/user/@alice:example.com/filter", body)
