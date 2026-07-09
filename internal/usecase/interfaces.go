@@ -62,6 +62,7 @@ type EventoStorage interface {
 	GetMissingEvents(ctx context.Context, roomID string, earliestEvents, latestEvents []string, limit int, minDepth int64) ([]domain.Evento, error)
 	// SaveReceipt atualiza o ponteiro de leitura de um utilizador numa sala
 	SaveReceipt(ctx context.Context, userID, roomID, receiptType, eventID string, ts int64) error
+	GetRoomMessagesHistory(ctx context.Context, roomID string, fromToken int64, dir string, limit int) ([]domain.Evento, error)
 }
 
 type DeviceStorage interface {
@@ -113,7 +114,7 @@ type FileStorage interface {
 // permite testar o MediaService com um fake, sem precisar de rede.
 type RemoteMediaFetcher interface {
 	// FetchRemoteMedia busca o arquivo mediaID hospedado em destServerName
-	// content deve ser fechado pelo chamador e contentType e filename 
+	// content deve ser fechado pelo chamador e contentType e filename
 	// podem vir vazios se o servidor remoto não os informar
 	FetchRemoteMedia(ctx context.Context, destServerName, mediaID string) (content io.ReadCloser, contentType, filename string, err error)
 }

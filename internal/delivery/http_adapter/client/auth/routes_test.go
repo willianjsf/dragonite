@@ -52,6 +52,10 @@ func (s *authUserStore) GetAccountData(ctx context.Context, userID, roomID, tipo
 	return nil, nil
 }
 
+func (s *authUserStore) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
 type authDeviceStore struct {
 	upserted *domain.Dispositivo
 }

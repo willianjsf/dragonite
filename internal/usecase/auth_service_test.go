@@ -53,6 +53,9 @@ func (f *fakeUserStore) SaveAccountData(ctx context.Context, account domain.Acco
 func (f *fakeUserStore) GetAccountData(ctx context.Context, userID, roomID, tipo string) (*domain.AccountData, error) {
 	return nil, nil
 }
+func (f *fakeUserStore) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
+	return nil, nil, nil
+}
 
 type fakeDeviceStore struct {
 	upserted           *domain.Dispositivo

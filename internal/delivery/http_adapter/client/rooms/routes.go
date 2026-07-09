@@ -137,7 +137,7 @@ func (h *Handler) postCreateRoom(w http.ResponseWriter, r *http.Request) {
 	if req.RoomVersion != nil {
 		version = *req.RoomVersion
 	}
- 
+
 	// initial_state: converte do formato da requisição (schemas.InitialStateEvent)
 	// para o formato esperado pelo usecase (usecase.StateEventParams)
 	initialState := make([]usecase.StateEventParams, 0, len(req.InitialState))
@@ -151,7 +151,7 @@ func (h *Handler) postCreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := usecase.CreateRoomParams{
-		CreatorID: 	  userID,
+		CreatorID:    userID,
 		Visibility:   req.Visibility,
 		Alias:        alias,
 		Name:         name,
@@ -380,10 +380,10 @@ func (h *Handler) getRoomMessages(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	userID, ok := ctx.Value(types.UserIDKey).(string)
-    if !ok || userID == "" {
-        httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, "Missing or invalid access token")
-        return
-    }
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, "Missing or invalid access token")
+		return
+	}
 
 	roomID := r.PathValue("roomId")
 	if roomID == "" {
@@ -391,34 +391,34 @@ func (h *Handler) getRoomMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    from := r.URL.Query().Get("from");
-    dir := r.URL.Query().Get("dir");
+	from := r.URL.Query().Get("from")
+	dir := r.URL.Query().Get("dir")
 
-    if dir == "" {
+	if dir == "" {
 		dir = "b" // "b" (backwards) é o padrão do Matrix
 	}
 
-    limitStr := r.URL.Query().Get("limit");
-    limit := 10 // Padrão recomendado pelo spec
+	limitStr := r.URL.Query().Get("limit")
+	limit := 10 // Padrão recomendado pelo spec
 
-    if limitStr != "" {
-    	if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-     		limit = parsed
-     }
-    }
+	if limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
 
-    response, err := h.roomInteractions.GetMessages(ctx, roomID, userID, from, dir, limit)
-    if err != nil {
-    	if errors.Is(err, types.ErrForbidden) {
+	response, err := h.roomInteractions.GetMessages(ctx, roomID, userID, from, dir, limit)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
 			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You do not have permission to read this room's history")
 			return
 		}
 		log.Printf("[ERROR] GET /messages: %v", err)
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get room messages")
 		return
-    }
+	}
 
-    httputil.WriteJSON(w, http.StatusOK, response)
+	httputil.WriteJSON(w, http.StatusOK, response)
 
 }
 
@@ -456,5 +456,12 @@ func (h *Handler) postReceipt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// O spec Matrix exige que se devolva um objeto JSON vazio em caso de sucesso
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
+}
+
+// postReadMarkers é um mock para o fully read marker (m.fully_read) e, opcionalmente,
+// os read receipts (m.read / m.read.private) enviados no mesmo corpo.
+// POST /_matrix/client/v3/rooms/{roomId}/read_markers
+func (h *Handler) postReadMarkers(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }

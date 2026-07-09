@@ -138,6 +138,10 @@ func (f *fakeUsuarioStorage) GetAccountData(ctx context.Context, userID, roomID,
 	return nil, nil
 }
 
+func (s *fakeUsuarioStorage) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
 // helper para construir o handler de federation com profileService injetado
 func newTestHandlerWithProfile(t *testing.T, storage *fakeUsuarioStorage) *Handler {
 	t.Helper()
@@ -540,6 +544,22 @@ func (f *fakeFedEventoStore) GetEventsSince(_ context.Context, _ string, _ int, 
 }
 func (f *fakeFedEventoStore) CheckEventoExists(_ context.Context, _ string) (bool, error) {
 	return false, nil
+}
+
+func (f *fakeFedEventoStore) GetRoomMessagesHistory(ctx context.Context, roomID string, fromToken int64, dir string, limit int) ([]domain.Evento, error) {
+	return nil, nil
+}
+
+func (f *fakeFedEventoStore) GetMissingEvents(ctx context.Context, roomID string, earliestEvents, latestEvents []string, limit int, minDepth int64) ([]domain.Evento, error) {
+	return nil, nil
+}
+
+func (f *fakeFedEventoStore) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
+func (f *fakeFedEventoStore) SaveReceipt(ctx context.Context, userID, roomID, receiptType, eventID string, ts int64) error {
+	return nil
 }
 
 type fakeFedWorkUnit struct{}
@@ -1351,7 +1371,6 @@ func (f *fakeFileStorage) Download(_ context.Context, _ string) (io.ReadCloser, 
 	return io.NopCloser(bytes.NewReader(f.content)), nil
 }
 func (f *fakeFileStorage) Delete(_ context.Context, _ string) error { return nil }
-
 
 type fakeMidiaStorage struct {
 	midia *domain.Midia
