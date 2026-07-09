@@ -5,8 +5,8 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
-	"time"
 	"strconv"
+	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"

@@ -12,13 +12,12 @@ import (
 	"log"
 	"maps"
 	"mime/multipart"
-	"net/textproto"
 	"net/http"
+	"net/textproto"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"log"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -944,6 +943,8 @@ func (h *Handler) postGetMissingEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
 // getMediaDownload serve uma mídia hospedada neste servidor para outro servidor Matrix federado
 // Este é o lado receptor do proxy implementado em FederationService.FetchRemoteMedia.
 func (h *Handler) getMediaDownload(w http.ResponseWriter, r *http.Request) {

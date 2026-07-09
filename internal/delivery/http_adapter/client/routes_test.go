@@ -49,6 +49,10 @@ func (c *clientUserStore) GetAccountData(ctx context.Context, userID, roomID, ti
 	return nil, nil
 }
 
+func (s *clientUserStore) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
 type clientCanalStore struct {
 	joinedRooms []string
 }
