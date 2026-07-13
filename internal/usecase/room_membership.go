@@ -66,7 +66,7 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 		}
 
 		// B. Update the denormalized fast-lookup table
-		if err := s.canalRepo.UpsertMembership(txCtx, roomID, userID, "leave"); err != nil {
+		if err := s.canalRepo.UpsertMembership(txCtx, roomID, userID, "leave", eventID); err != nil {
 			return err
 		}
 
@@ -138,7 +138,7 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 		}
 
 		// Update their status from "invite" (or null) to "join"
-		if err := s.canalRepo.UpsertMembership(txCtx, roomID, userID, "join"); err != nil {
+		if err := s.canalRepo.UpsertMembership(txCtx, roomID, userID, "join", eventID); err != nil {
 			return err
 		}
 		return nil

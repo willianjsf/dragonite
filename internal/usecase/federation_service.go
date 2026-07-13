@@ -412,7 +412,7 @@ func (f *FederationService) ProcessSendJoin(ctx context.Context, roomID string, 
 		if err := f.canalStore.UpsertCurrentState(txCtx, roomID, "m.room.member", joinEvent.Sender, joinEvent.ID); err != nil {
 			return fmt.Errorf("failed to upsert current state: %w", err)
 		}
-		if err := f.canalStore.UpsertMembership(txCtx, roomID, joinEvent.Sender, "join"); err != nil {
+		if err := f.canalStore.UpsertMembership(txCtx, roomID, joinEvent.Sender, "join", joinEvent.ID); err != nil {
 			return fmt.Errorf("failed to upsert membership: %w", err)
 		}
 		return nil
@@ -489,7 +489,7 @@ func (f *FederationService) ProcessSendLeave(ctx context.Context, roomID string,
 		if err := f.canalStore.UpsertCurrentState(txCtx, roomID, "m.room.member", leaveEvent.Sender, leaveEvent.ID); err != nil {
 			return fmt.Errorf("failed to upsert current state: %w", err)
 		}
-		if err := f.canalStore.UpsertMembership(txCtx, roomID, leaveEvent.Sender, "leave"); err != nil {
+		if err := f.canalStore.UpsertMembership(txCtx, roomID, leaveEvent.Sender, "leave", leaveEvent.ID); err != nil {
 			return fmt.Errorf("failed to upsert membership: %w", err)
 		}
 		return nil
@@ -520,7 +520,7 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 				return fmt.Errorf("failed to upsert current state: %w", err)
 			}
 
-			if err := f.canalStore.UpsertMembership(txCtx, roomID, inviteEvent.Sender, "join"); err != nil {
+			if err := f.canalStore.UpsertMembership(txCtx, roomID, inviteEvent.Sender, "invite", inviteEvent.ID); err != nil {
 				return fmt.Errorf("failed to upsert membership: %w", err)
 			}
 		}
