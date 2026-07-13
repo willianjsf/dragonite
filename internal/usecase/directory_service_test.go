@@ -28,6 +28,10 @@ func (f *fakeCanalStore) GetUserJoinedRooms(ctx context.Context, userID string) 
 	return f.joinedRooms, nil
 }
 
+func (f *fakeCanalStore) GetUserLeftRooms(ctx context.Context, userID string) ([]string, error) {
+	return nil, nil
+}
+
 func (f *fakeCanalStore) GetUserMembership(ctx context.Context, roomID, userID string) (string, error) {
 	return "", nil
 }
@@ -36,7 +40,7 @@ func (f *fakeCanalStore) GetStateEventID(ctx context.Context, canalID string, st
 	return "", false
 }
 
-func (f *fakeCanalStore) UpsertMembership(ctx context.Context, roomID, userID, membership string) error {
+func (f *fakeCanalStore) UpsertMembership(ctx context.Context, roomID, userID, membership, id_evento string) error {
 	return nil
 }
 

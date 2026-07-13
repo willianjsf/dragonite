@@ -138,6 +138,22 @@ func (f *fakeUsuarioStorage) GetAccountData(ctx context.Context, userID, roomID,
 	return nil, nil
 }
 
+func (s *fakeUsuarioStorage) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
+func (s *fakeUsuarioStorage) GetGlobalAccountData(ctx context.Context, userID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (s *fakeUsuarioStorage) GetAccountDataOfCanal(ctx context.Context, userID string, canalID string) ([]domain.AccountData, error) {
+	return nil, nil
+}
+
+func (s *fakeUsuarioStorage) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
+}
+
 // helper para construir o handler de federation com profileService injetado
 func newTestHandlerWithProfile(t *testing.T, storage *fakeUsuarioStorage) *Handler {
 	t.Helper()
@@ -488,7 +504,7 @@ func (f *fakeFedCanalStore) GetJoinRule(_ context.Context, _ string) (string, er
 func (f *fakeFedCanalStore) GetCanalParticipatingServers(_ context.Context, _ string) ([]string, error) {
 	return f.servers, nil
 }
-func (f *fakeFedCanalStore) UpsertMembership(_ context.Context, _, _, _ string) error { return nil }
+func (f *fakeFedCanalStore) UpsertMembership(_ context.Context, _, _, _, _ string) error { return nil }
 func (f *fakeFedCanalStore) UpsertCurrentState(_ context.Context, _, _, _, _ string) error {
 	return nil
 }
@@ -514,6 +530,9 @@ func (f *fakeFedCanalStore) GetForwardExtremities(_ context.Context, _ string) (
 	return nil, nil
 }
 func (f *fakeFedCanalStore) SaveAlias(_ context.Context, _, _ string) error { return nil }
+func (f *fakeFedCanalStore) GetUserLeftRooms(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
 
 type fakeFedEventoStore struct {
 	stateEvents []domain.Evento
@@ -540,6 +559,30 @@ func (f *fakeFedEventoStore) GetEventsSince(_ context.Context, _ string, _ int, 
 }
 func (f *fakeFedEventoStore) CheckEventoExists(_ context.Context, _ string) (bool, error) {
 	return false, nil
+}
+
+func (f *fakeFedEventoStore) GetRoomMessagesHistory(ctx context.Context, roomID string, fromToken int64, dir string, limit int) ([]domain.Evento, error) {
+	return nil, nil
+}
+
+func (f *fakeFedEventoStore) GetMissingEvents(ctx context.Context, roomID string, earliestEvents, latestEvents []string, limit int, minDepth int64) ([]domain.Evento, error) {
+	return nil, nil
+}
+
+func (f *fakeFedEventoStore) GetStateAndAuthChainIDs(ctx context.Context, roomID string, eventID string) ([]string, []string, error) {
+	return nil, nil, nil
+}
+
+func (f *fakeFedEventoStore) SaveReceipt(ctx context.Context, userID, roomID, receiptType, eventID string, ts int64) error {
+	return nil
+}
+
+func (f *fakeFedEventoStore) GetEventsOfCanalSince(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
+}
+
+func (f *fakeFedEventoStore) GetEventsOfCanalSinceLeft(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error) {
+	return nil, nil
 }
 
 type fakeFedWorkUnit struct{}
@@ -1351,7 +1394,6 @@ func (f *fakeFileStorage) Download(_ context.Context, _ string) (io.ReadCloser, 
 	return io.NopCloser(bytes.NewReader(f.content)), nil
 }
 func (f *fakeFileStorage) Delete(_ context.Context, _ string) error { return nil }
-
 
 type fakeMidiaStorage struct {
 	midia *domain.Midia
