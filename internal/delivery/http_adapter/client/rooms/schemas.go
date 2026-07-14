@@ -95,3 +95,11 @@ type StateEventRequest map[string]any
 type StateEventResponse struct {
 	EventID string `json:"event_id"`
 }
+
+// POST /rooms/{roomId}/invite
+
+// InviteRequest é o corpo de requisição de POST /rooms/{roomId}/invite.
+type InviteRequest struct {
+	UserID string  `json:"user_id"`
+	Reason *string `json:"reason,omitempty"`
+}

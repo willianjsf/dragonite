@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/golang-jwt/jwt/v5"
 )

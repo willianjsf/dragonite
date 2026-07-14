@@ -91,7 +91,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	// busca de usuários
 	mux.Handle("POST /_matrix/client/v3/user_directory/search", authMiddleware(http.HandlerFunc(h.searchUsers)))
 	// salas em que o usuário está atualmente
-+	mux.Handle("GET /_matrix/client/v3/joined_rooms", authMiddleware(http.HandlerFunc(h.getJoinedRooms)))
+	mux.Handle("GET /_matrix/client/v3/joined_rooms", authMiddleware(http.HandlerFunc(h.getJoinedRooms)))
 	// regras de notificação (mock)
 	mux.Handle("GET /_matrix/client/v3/pushrules/", authMiddleware(http.HandlerFunc(h.getPushRules)))
 	// upload de filtro (mock)

@@ -53,6 +53,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("POST /_matrix/client/v3/createRoom", authMiddleware(http.HandlerFunc(h.postCreateRoom)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/join", authMiddleware(http.HandlerFunc(h.postJoinRoom)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/leave", authMiddleware(http.HandlerFunc(h.postLeaveRoom)))
+	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/invite", authMiddleware(http.HandlerFunc(h.postInviteRoom)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId}", authMiddleware(http.HandlerFunc(h.putSendEvent)))
 	// com stateKey (ex: /state/m.room.member/@alice:server.com)
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/state/{eventType}/{stateKey}", authMiddleware(http.HandlerFunc(h.putStateEvent)))
@@ -258,6 +259,67 @@ func (h *Handler) postLeaveRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Spec exige {} com 200 OK — mesmo padrão do postLogout
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
+}
+
+// postInviteRoom convida um usuário a participar da sala especificada.
+// POST /_matrix/client/v3/rooms/{roomId}/invite
+// Ref: https://spec.matrix.org/v1.18/client-server-api/#post_matrixclientv3roomsroomidinvite
+func (h *Handler) postInviteRoom(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing or invalid access token")
+		return
+	}
+
+	roomID := r.PathValue("roomId")
+	if roomID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Missing roomId")
+		return
+	}
+
+	var req InviteRequest
+	if err := httputil.ParseBody(r, &req); err != nil {
+		if err == types.ErrNoBodyFound {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "No request body")
+		} else {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "Invalid request body")
+		}
+		return
+	}
+
+	if req.UserID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, "user_id is required")
+		return
+	}
+	if util.ExtractDomainFromUserID(req.UserID) == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "invalid user_id")
+		return
+	}
+
+	var reason string
+	if req.Reason != nil {
+		reason = *req.Reason
+	}
+
+	err := h.roomMembershipService.InviteUser(ctx, roomID, userID, req.UserID, reason)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, err.Error())
+			return
+		}
+		if errors.Is(err, usecase.ErrIncompatibleRoomVersion) {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_UNSUPPORTED_ROOM_VERSION, "Invitee's homeserver does not support this room version")
+			return
+		}
+		log.Printf("[ERROR] POST /rooms/%s/invite: %v", roomID, err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to invite user")
+		return
+	}
+
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }
 
