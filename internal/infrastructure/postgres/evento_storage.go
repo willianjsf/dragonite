@@ -555,3 +555,41 @@ func (s *PostgresStorage) SaveReceipt(ctx context.Context, userID, roomID, recei
 
 	return nil
 }
+
+func (s *PostgresStorage) GetRoomMemberEvents(ctx context.Context, roomID string) ([]domain.Evento, error) {
+	query := `
+        SELECT e.id_evento, e.tipo, e.id_canal, e.sender, e.origin_server_ts,
+               e.content, e.state_key, e.prev_eventos, e.auth_eventos, e.depth
+        FROM Canal_Estado_Atual cea
+        JOIN Evento e ON e.id_evento = cea.id_evento
+        WHERE cea.id_canal = $1 AND e.tipo = 'm.room.member'
+    `
+
+	rows, err := s.db.Query(ctx, query, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get room member events: %w", err)
+	}
+	defer rows.Close()
+
+	var eventos []domain.Evento
+	for rows.Next() {
+		var event domain.Evento
+		var stateKey sql.NullString
+		err := rows.Scan(
+			&event.ID, &event.Tipo, &event.CanalID, &event.Sender,
+			&event.OrigemServidorTS, &event.Content, &stateKey,
+			pq.Array(&event.PrevEventos), pq.Array(&event.AuthEventos), &event.Depth,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan member event: %w", err)
+		}
+		if stateKey.Valid {
+			event.StateKey = &stateKey.String
+		}
+		eventos = append(eventos, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return eventos, nil
+}

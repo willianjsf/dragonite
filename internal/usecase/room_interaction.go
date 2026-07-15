@@ -335,3 +335,58 @@ func (s *RoomInteractionService) GetRoomState(ctx context.Context, userID, roomI
 
 	return stateEvents, nil
 }
+
+// GetRoomMembers retorna a lista de membros filtrada
+func (s *RoomInteractionService) GetRoomMembers(ctx context.Context, userID, roomID, membershipFilter, notMembershipFilter string) ([]domain.Evento, error) {
+	// Verificar permissões (se está na sala)
+	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
+	if err != nil || status != "join" {
+		return nil, types.ErrForbidden
+	}
+
+	// Obter todos os eventos m.room.member da base de dados
+	memberEvents, err := s.eventoRepo.GetRoomMemberEvents(ctx, roomID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch member events: %w", err)
+	}
+
+	// Se não houver filtros, devolvemos tudo
+	if membershipFilter == "" && notMembershipFilter == "" {
+		if memberEvents == nil {
+			return []domain.Evento{}, nil
+		}
+		return memberEvents, nil
+	}
+
+	// Filtrar na memória (interpretar o JSON do Content para extrair a "membership")
+	var filtered []domain.Evento
+	for _, ev := range memberEvents {
+		var content map[string]interface{}
+
+		// Converte a string de Content para um Mapa
+		if err := json.Unmarshal([]byte(ev.Content), &content); err != nil {
+			continue // Se houver erro de formatação num evento, ignoramos
+		}
+
+		memState, ok := content["membership"].(string)
+		if !ok {
+			continue // Ignora eventos que não tenham o campo membership
+		}
+
+		// Aplica a lógica dos filtros exigidos pela especificação
+		if membershipFilter != "" && memState != membershipFilter {
+			continue
+		}
+		if notMembershipFilter != "" && memState == notMembershipFilter {
+			continue
+		}
+
+		filtered = append(filtered, ev)
+	}
+
+	if filtered == nil {
+		return []domain.Evento{}, nil
+	}
+
+	return filtered, nil
+}

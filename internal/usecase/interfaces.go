@@ -75,6 +75,7 @@ type EventoStorage interface {
 	// Get Events since the user has left
 	GetEventsOfCanalSinceLeft(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error)
 	GetStateAndAuthChainEvents(ctx context.Context, roomID string, userID string) ([]domain.Evento, []domain.Evento, error)
+	GetRoomMemberEvents(ctx context.Context, roomID string) ([]domain.Evento, error)
 }
 
 type DeviceStorage interface {
