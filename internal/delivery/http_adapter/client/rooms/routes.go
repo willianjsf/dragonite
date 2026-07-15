@@ -65,6 +65,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/read_markers", authMiddleware(http.HandlerFunc(h.postReadMarkers)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/event/{eventId}", authMiddleware(http.HandlerFunc(h.getEvent)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state", authMiddleware(http.HandlerFunc(h.getRoomState)))
+	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/joined_members", authMiddleware(http.HandlerFunc(h.getJoinedMembers)))
 }
 
 // getPublicRooms lista as salas públicas do servidor.
@@ -552,4 +553,43 @@ func (h *Handler) getRoomState(w http.ResponseWriter, r *http.Request) {
 
 	// A especificação Matrix determina que a resposta é diretamente o JSON Array
 	httputil.WriteJSON(w, http.StatusOK, stateEvents)
+}
+
+// getJoinedMembers retorna um mapa dos membros que estão ativamente na sala
+// GET /_matrix/client/v3/rooms/{roomId}/joined_members
+func (h *Handler) getJoinedMembers(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), httputil.RequestTimeout)
+	defer cancel()
+
+	userID, ok := ctx.Value(types.UserIDKey).(string)
+	if !ok || userID == "" {
+		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_MISSING_TOKEN, "Missing access token")
+		return
+	}
+
+	roomID := r.PathValue("roomId")
+	if roomID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing roomId")
+		return
+	}
+
+	membersMap, err := h.roomInteractions.GetJoinedMembers(ctx, userID, roomID)
+	if err != nil {
+		if errors.Is(err, types.ErrForbidden) {
+			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You are not in this room")
+			return
+		}
+		log.Printf("[ERROR] GET /joined_members: %v", err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to get joined members")
+		return
+	}
+
+	// Criar a resposta exata exigida pelo protocolo Matrix
+	response := struct {
+		Joined map[string]usecase.JoinedMemberProfile `json:"joined"`
+	}{
+		Joined: membersMap,
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
