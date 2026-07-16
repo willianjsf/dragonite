@@ -25,11 +25,11 @@ type FilterUploadResponse struct {
 type CapabilitiesResponse struct {
 	Capabilities Capabilities `json:"capabilities"`
 }
- 
+
 type Capabilities struct {
 	RoomVersions RoomVersionsCapability `json:"m.room_versions"`
 }
- 
+
 type RoomVersionsCapability struct {
 	Default   string            `json:"default"`   // obrigatório
 	Available map[string]string `json:"available"` // obrigatório
@@ -86,4 +86,11 @@ type DisplayNameRequest struct {
 // GET /_matrix/client/v3/joined_rooms
 type JoinedRoomsResponse struct {
 	JoinedRooms []string `json:"joined_rooms"`
+}
+
+// QueryKeysRequest representa o corpo da requisição enviada pelo Element
+type QueryKeysRequest struct {
+	DeviceKeys map[string][]string `json:"device_keys"`
+	Timeout    int                 `json:"timeout,omitempty"`
+	Token      string              `json:"token,omitempty"`
 }
