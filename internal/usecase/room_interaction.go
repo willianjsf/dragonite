@@ -251,6 +251,9 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 	if err != nil || status != "join" {
 		return nil, types.ErrForbidden
 	}
+	if dir != "b" && dir != "f" {
+		return nil, ErrInvalidPaginationDirection
+	}
 
 	// Converter o token "from" num stream_ordering (int64)
 	var fromToken int64
@@ -275,15 +278,20 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 		eventos = []domain.Evento{}
 	}
 
+	// Determinar o token de paginação 'start'
+	startToken := from
+	if startToken == "" {
+		if len(eventos) > 0 {
+			startToken = domain.SyncToken{TimelinePosition: eventos[0].StreamOrdering}.Encode()
+		} else {
+			startToken = domain.SyncToken{TimelinePosition: fromToken}.Encode()
+		}
+	}
+
 	// Determinar o token de paginação 'end' com base no último evento do chunk
 	var endToken string
 	if len(eventos) > 0 {
-		var lastEvent domain.Evento
-		if dir == "b" {
-			lastEvent = eventos[0]
-		} else {
-			lastEvent = eventos[len(eventos)-1]
-		}
+		lastEvent := eventos[len(eventos)-1]
 		// IMPORTANT: O token gerado DEVE ser formatado como SyncToken para consistência no cliente
 		endToken = domain.SyncToken{TimelinePosition: lastEvent.StreamOrdering}.Encode()
 	} else {
@@ -291,7 +299,7 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 	}
 
 	return &GetMessagesResponse{
-		Start: from,
+		Start: startToken,
 		End:   endToken,
 		Chunk: eventos,
 	}, nil
@@ -456,6 +464,9 @@ func (s *RoomInteractionService) GetJoinedMembers(ctx context.Context, userID, r
 
 // ErrStateNotFound é retornado quando não existe state event com o tipo/chave pedidos
 var ErrStateNotFound = errors.New("state event not found")
+
+// ErrInvalidPaginationDirection é retornado quando dir não é "b" nem "f".
+var ErrInvalidPaginationDirection = errors.New("invalid pagination direction")
 
 func (s *RoomInteractionService) GetStateEventContent(ctx context.Context, roomID, userID, eventType, stateKey string) (*domain.Evento, error) {
 	status, found, err := s.canalRepo.GetUserMembershipRecord(ctx, roomID, userID)

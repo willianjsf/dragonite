@@ -70,8 +70,10 @@ func (f *fakeRoomsCanalStore) SaveAlias(ctx context.Context, roomID, fullAlias s
 
 // fakeRoomsEventoStore implementa usecase.EventoStorage com campos configuráveis
 type fakeRoomsEventoStore struct {
-	evento    *domain.Evento
-	eventoErr error
+	evento             *domain.Evento
+	eventoErr          error
+	messagesHistory    []domain.Evento
+	messagesHistoryErr error
 }
 
 func (f *fakeRoomsEventoStore) GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
@@ -111,7 +113,7 @@ func (f *fakeRoomsEventoStore) SaveReceipt(ctx context.Context, userID, roomID, 
 	return nil
 }
 func (f *fakeRoomsEventoStore) GetRoomMessagesHistory(ctx context.Context, roomID string, fromToken int64, dir string, limit int) ([]domain.Evento, error) {
-	return nil, nil
+	return f.messagesHistory, f.messagesHistoryErr
 }
 func (f *fakeRoomsEventoStore) GetEventsOfCanalSinceLeft(ctx context.Context, userID string, roomID string, since domain.SyncToken) ([]domain.Evento, error) {
 	return nil, nil
@@ -288,5 +290,73 @@ func TestGetRoomStateMissingToken(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func newGetRoomMessagesRequest(roomID string, query string, withUser bool) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/_matrix/client/v3/rooms/"+roomID+"/messages"+query, nil)
+	if withUser {
+		req = req.WithContext(context.WithValue(req.Context(), types.UserIDKey, "@alice:example.com"))
+	}
+	req.SetPathValue("roomId", roomID)
+	return req
+}
+
+func TestGetRoomMessagesInvalidDirection(t *testing.T) {
+	canalStore := &fakeRoomsCanalStore{membershipStatus: "join", membershipFound: true}
+	eventoStore := &fakeRoomsEventoStore{}
+	h := newTestGetRoomStateHandler(canalStore, eventoStore)
+
+	req := newGetRoomMessagesRequest("!room1:example.com", "?dir=x", true)
+	rec := httptest.NewRecorder()
+
+	h.getRoomMessages(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var errResp struct {
+		ErrCode string `json:"errcode"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if errResp.ErrCode != "M_INVALID_PARAM" {
+		t.Fatalf("expected M_INVALID_PARAM, got %s", errResp.ErrCode)
+	}
+}
+
+func TestGetRoomMessagesNoFromReturnsStartToken(t *testing.T) {
+	canalStore := &fakeRoomsCanalStore{membershipStatus: "join", membershipFound: true}
+	eventoStore := &fakeRoomsEventoStore{
+		messagesHistory: []domain.Evento{
+			{ID: "$3", Tipo: "m.room.message", StreamOrdering: 30},
+			{ID: "$2", Tipo: "m.room.message", StreamOrdering: 20},
+		},
+	}
+	h := newTestGetRoomStateHandler(canalStore, eventoStore)
+
+	req := newGetRoomMessagesRequest("!room1:example.com", "", true)
+	rec := httptest.NewRecorder()
+
+	h.getRoomMessages(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Start string `json:"start"`
+		End   string `json:"end"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Start != "s30_0_0" {
+		t.Fatalf("expected start s30_0_0, got %q", resp.Start)
+	}
+	if resp.End != "s20_0_0" {
+		t.Fatalf("expected end s20_0_0, got %q", resp.End)
 	}
 }

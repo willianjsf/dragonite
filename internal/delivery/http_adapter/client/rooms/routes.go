@@ -562,6 +562,9 @@ func (h *Handler) getRoomMessages(w http.ResponseWriter, r *http.Request) {
 
 	if dir == "" {
 		dir = "b" // "b" (backwards) é o padrão do Matrix
+	} else if dir != "b" && dir != "f" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "dir must be 'b' or 'f'")
+		return
 	}
 
 	limitStr := r.URL.Query().Get("limit")
@@ -575,6 +578,10 @@ func (h *Handler) getRoomMessages(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.roomInteractions.GetMessages(ctx, roomID, userID, from, dir, limit)
 	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidPaginationDirection) {
+			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_INVALID_PARAM, "dir must be 'b' or 'f'")
+			return
+		}
 		if errors.Is(err, types.ErrForbidden) {
 			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, "You do not have permission to read this room's history")
 			return
