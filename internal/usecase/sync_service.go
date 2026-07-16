@@ -345,7 +345,7 @@ func (s *SyncService) GetJoinedRooms(ctx context.Context, userID string, since d
 				StateKey:         event.StateKey,
 				OrigemServidorTS: event.OrigemServidorTS,
 				Sender:           event.Sender,
-				Unsigned:         event.Unsigned,
+				Unsigned:         unsignedForRecipient(event.Unsigned, event.Sender, userID),
 			}
 		}
 
@@ -356,7 +356,7 @@ func (s *SyncService) GetJoinedRooms(ctx context.Context, userID string, since d
 		prevBatchToken := since
 		if len(events) > 0 {
 			// Subtract 1 from the earliest stream_ordering to represent the boundary just before it
-			prevBatchToken.TimelinePosition = max(events[0].StreamOrdering-1, 0)
+			prevBatchToken.TimelinePosition = max(events[0].StreamOrdering, 0)
 		}
 
 		mapJoined[roomID] = JoinedRoom{
@@ -443,13 +443,13 @@ func (s *SyncService) GetLeaveRooms(ctx context.Context, userID string, since do
 				StateKey:         event.StateKey,
 				OrigemServidorTS: event.OrigemServidorTS,
 				Sender:           event.Sender,
-				Unsigned:         event.Unsigned,
+				Unsigned:         unsignedForRecipient(event.Unsigned, event.Sender, userID),
 			}
 		}
 
 		prevBatchToken := since
 		if len(events) > 0 {
-			prevBatchToken.TimelinePosition = max(events[0].StreamOrdering-1, 0)
+			prevBatchToken.TimelinePosition = max(events[0].StreamOrdering, 0)
 		}
 
 		mapLeft[roomID] = LeftRoom{
@@ -457,10 +457,37 @@ func (s *SyncService) GetLeaveRooms(ctx context.Context, userID string, since do
 			Timeline: Timeline{
 				Events:    parsedEvents,
 				Limited:   false,
-				PrevBatch: prevBatchToken, // <-- Corrected
+				PrevBatch: prevBatchToken,
 			},
 		}
 	}
 
 	return mapLeft, nil
+}
+
+// unsignedForRecipient strips transaction_id from an event's unsigned data
+// unless the requesting user is the one who sent the event. Per spec,
+// transaction_id is only meaningful (and should only be visible) to the
+// sending client, since it's how it reconciles its own local echo.
+func unsignedForRecipient(unsigned json.RawMessage, sender, requesterID string) json.RawMessage {
+	if len(unsigned) == 0 || sender == requesterID {
+		return unsigned
+	}
+
+	var data map[string]any
+	if err := json.Unmarshal(unsigned, &data); err != nil {
+		return unsigned
+	}
+	if _, ok := data["transaction_id"]; !ok {
+		return unsigned
+	}
+	delete(data, "transaction_id")
+	if len(data) == 0 {
+		return nil
+	}
+	stripped, err := json.Marshal(data)
+	if err != nil {
+		return unsigned
+	}
+	return stripped
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
@@ -56,6 +57,7 @@ type EventParams struct {
 	SenderID  string
 	Content   map[string]any
 	EventType string
+	TxnID     string
 }
 
 type StateParams struct {
@@ -171,6 +173,10 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 		OrigemServidorTS: time.Now().UnixMilli(),
 	}
 
+	if params.TxnID != "" {
+		newEvent.Unsigned, _ = json.Marshal(map[string]any{"transaction_id": params.TxnID})
+	}
+
 	// ATOMIC DATABASE TRANSACTION
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
 		// 3. Resolve DAG Dependencies (The VIP Pass and the Timeline)
@@ -273,6 +279,8 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages history: %w", err)
 	}
+
+	log.Println(eventos)
 
 	if eventos == nil {
 		eventos = []domain.Evento{}

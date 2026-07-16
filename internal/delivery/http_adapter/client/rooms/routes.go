@@ -381,8 +381,8 @@ func (h *Handler) putSendEvent(w http.ResponseWriter, r *http.Request) {
 		SenderID:  userID,
 		EventType: eventType,
 		Content:   content,
+		TxnID:     txnID,
 	}
-
 	// 5. Execute Core Logic
 	eventID, err := h.roomInteractions.SendEvent(ctx, params)
 	if err != nil {

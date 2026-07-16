@@ -207,7 +207,7 @@ func (s *PostgresStorage) GetAccountDataOfCanal(ctx context.Context, userID stri
 func (s *PostgresStorage) GetInviteEventsSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error) {
 	db := getTxOrPool(ctx, s.db)
 	rows, err := db.Query(ctx, `
-		SELECT e.id_evento, e.tipo, e.id_canal, e.sender, e.origin_server_ts, e.content, e.stream_ordering, e.state_key
+		SELECT e.id_evento, e.tipo, e.id_canal, e.sender, e.origin_server_ts, e.content, e.stream_ordering, e.state_key, e.hashes, e.signatures, e.unsigned
 		FROM Canal_Membership cm
 		INNER JOIN Evento e ON e.id_evento = cm.id_evento
 		WHERE cm.id_usuario = $1
@@ -224,7 +224,9 @@ func (s *PostgresStorage) GetInviteEventsSince(ctx context.Context, userID strin
 	for rows.Next() {
 		var event domain.Evento
 		var stateKey sql.NullString
-		if err := rows.Scan(&event.ID, &event.Tipo, &event.CanalID, &event.Sender, &event.OrigemServidorTS, &event.Content, &event.StreamOrdering, &stateKey); err != nil {
+		if err := rows.Scan(&event.ID, &event.Tipo, &event.CanalID,
+			&event.Sender, &event.OrigemServidorTS, &event.Content,
+			&event.StreamOrdering, &stateKey, &event.Hashes, &event.Signatures, &event.Unsigned); err != nil {
 			return nil, fmt.Errorf("failed to scan invite event: %w", err)
 		}
 		if stateKey.Valid {
