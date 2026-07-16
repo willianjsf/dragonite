@@ -307,12 +307,10 @@ func (s *RoomInteractionService) GetEvent(ctx context.Context, userID, roomID, e
 		return nil, types.ErrForbidden
 	}
 
-
 	evento, err := s.eventoRepo.GetEvento(ctx, eventID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch event: %w", err)
 	}
-
 
 	if evento.CanalID != roomID {
 		return nil, types.ErrForbidden
@@ -329,12 +327,10 @@ func (s *RoomInteractionService) GetRoomState(ctx context.Context, userID, roomI
 		return nil, types.ErrForbidden
 	}
 
-
 	stateEvents, err := s.eventoRepo.GetCurrentStateEvents(ctx, roomID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch current state events: %w", err)
 	}
-
 
 	if stateEvents == nil {
 		stateEvents = []domain.Evento{}
@@ -441,7 +437,7 @@ func (s *RoomInteractionService) GetJoinedMembers(ctx context.Context, userID, r
 		}
 	}
 
-  return joined, nil
+	return joined, nil
 }
 
 // ErrStateNotFound é retornado quando não existe state event com o tipo/chave pedidos
