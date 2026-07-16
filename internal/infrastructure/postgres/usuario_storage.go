@@ -73,7 +73,9 @@ func (s *PostgresStorage) GetProfileByID(ctx context.Context, userID string) (*d
 func (s *PostgresStorage) UpdateProfile(ctx context.Context, profile domain.Profile) error {
 	db := getTxOrPool(ctx, s.db)
 	_, err := db.Exec(ctx,
-		"UPDATE Profile SET nome = $1, foto_url = $2 WHERE fk_usuario_id = $3",
+		`UPDATE Profile
+			SET nome = COALESCE($1, nome), foto_url = COALESCE($2, foto_url)
+			WHERE fk_usuario_id = $3`,
 		profile.DisplayName, profile.AvatarURL, profile.IDUsuario)
 	if err != nil {
 		return fmt.Errorf("failed to update profile: %w", err)
