@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
@@ -104,6 +105,16 @@ func (h *Handler) putProfileKey(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("userId")
 	keyName := r.PathValue("keyName") // "displayname" ou "avatar_url"
 
+	loggedUser := r.Context().Value(types.UserIDKey).(string)
+
+	if loggedUser != userID {
+		httputil.WriteMatrixError(w, http.StatusForbidden,
+			"M_FORBIDDEN",
+			"User not authorized",
+		)
+		return
+	}
+
 	var reqBody map[string]string
 	if err := httputil.ParseBody(r, &reqBody); err != nil {
 		httputil.WriteMatrixError(w, http.StatusBadRequest,
@@ -146,7 +157,7 @@ func (h *Handler) putProfileKey(w http.ResponseWriter, r *http.Request) {
 
 		httputil.WriteMatrixError(w, http.StatusInternalServerError,
 			"M_UNKNOWN",
-			"Database error",
+			fmt.Sprint("Database Error: %w", err),
 		)
 		return
 	}
