@@ -25,11 +25,11 @@ type FilterUploadResponse struct {
 type CapabilitiesResponse struct {
 	Capabilities Capabilities `json:"capabilities"`
 }
- 
+
 type Capabilities struct {
 	RoomVersions RoomVersionsCapability `json:"m.room_versions"`
 }
- 
+
 type RoomVersionsCapability struct {
 	Default   string            `json:"default"`   // obrigatório
 	Available map[string]string `json:"available"` // obrigatório
@@ -97,4 +97,11 @@ type RoomAliasResponse struct {
 // PUT /_matrix/client/v3/directory/room/{roomAlias} corpo da requisição
 type SetRoomAliasRequest struct {
 	RoomID string `json:"room_id"`
+}
+
+// QueryKeysRequest representa o corpo da requisição enviada pelo Element
+type QueryKeysRequest struct {
+	DeviceKeys map[string][]string `json:"device_keys"`
+	Timeout    int                 `json:"timeout,omitempty"`
+	Token      string              `json:"token,omitempty"`
 }

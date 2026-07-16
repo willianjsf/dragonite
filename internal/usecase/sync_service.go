@@ -90,7 +90,7 @@ func (s *SyncService) SyncClient(ctx context.Context, userID string, since domai
 	}
 
 	// sem long-polling, envia eventos
-	if isResponseEmpty(response) || timeout <= 0 {
+	if !isResponseEmpty(response) || timeout <= 0 {
 		nextBatch, err := s.generateNextSinceToken(ctx, userID, since)
 		if err != nil {
 			return SyncClientResponse{
