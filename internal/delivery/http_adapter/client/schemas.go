@@ -87,3 +87,14 @@ type DisplayNameRequest struct {
 type JoinedRoomsResponse struct {
 	JoinedRooms []string `json:"joined_rooms"`
 }
+
+// GET /_matrix/client/v3/directory/room/{roomAlias} resposta
+type RoomAliasResponse struct {
+	RoomID  string   `json:"room_id"`
+	Servers []string `json:"servers"`
+}
+
+// PUT /_matrix/client/v3/directory/room/{roomAlias} corpo da requisição
+type SetRoomAliasRequest struct {
+	RoomID string `json:"room_id"`
+}
