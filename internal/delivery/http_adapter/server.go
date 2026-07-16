@@ -34,6 +34,7 @@ type Server struct {
 	usuarioService          *usecase.UsuarioService
 	mediaService            *usecase.MediaService
 	idempotencyCache        infrastructure.IdempotencyCache
+	presenceService         *usecase.PresenceService
 	keyFetcher              federation.KeyFetcherFn
 }
 
@@ -54,6 +55,7 @@ func NewServer(port int,
 	usuarioService *usecase.UsuarioService,
 	mediaService *usecase.MediaService,
 	idempotencyCache infrastructure.IdempotencyCache,
+	presenceService *usecase.PresenceService,
 	keyFetcher federation.KeyFetcherFn,
 ) *http.Server {
 
@@ -74,6 +76,7 @@ func NewServer(port int,
 		usuarioService:          usuarioService,
 		mediaService:            mediaService,
 		idempotencyCache:        idempotencyCache,
+		presenceService:         presenceService,
 		keyFetcher:              util.FetchRemoteServerKey,
 	}
 
@@ -83,7 +86,7 @@ func NewServer(port int,
 		Handler:      NewServer.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 35 * time.Second,
 	}
 
 	return &server
@@ -106,6 +109,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		s.roomInteractionsService,
 		s.mediaService,
 		s.idempotencyCache,
+		s.presenceService,
 	)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
 

@@ -161,8 +161,45 @@ func TestGetMessages_Success(t *testing.T) {
 	if len(resp.Chunk) != 2 {
 		t.Fatalf("expected 2 events in chunk, got %d", len(resp.Chunk))
 	}
-	if resp.End != "20" {
-		t.Errorf("expected end token '20', got %q", resp.End)
+	if resp.End != "s20_0_0" {
+		t.Errorf("expected end token 's20_0_0', got %q", resp.End)
+	}
+}
+
+func TestGetMessages_SetsStartWhenFromMissing(t *testing.T) {
+	roomID, userID := "!room1:example.com", "@alice:example.com"
+
+	canal := newRoomsvcFakeCanalStorage()
+	canal.membership[roomsvcMembershipKey(roomID, userID)] = "join"
+	evento := newRoomsvcFakeEventoStorage()
+	evento.messagesHistory = []domain.Evento{
+		{ID: "$3", Tipo: "m.room.message", StreamOrdering: 30},
+		{ID: "$2", Tipo: "m.room.message", StreamOrdering: 20},
+	}
+	svc := newTestRoomInteractionService(t, canal, evento)
+
+	resp, err := svc.GetMessages(context.Background(), roomID, userID, "", "b", 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if resp.Start != "s30_0_0" {
+		t.Fatalf("expected start token 's30_0_0', got %q", resp.Start)
+	}
+	if resp.End != "s20_0_0" {
+		t.Fatalf("expected end token 's20_0_0', got %q", resp.End)
+	}
+}
+
+func TestGetMessages_InvalidDirection(t *testing.T) {
+	roomID, userID := "!room1:example.com", "@alice:example.com"
+
+	canal := newRoomsvcFakeCanalStorage()
+	canal.membership[roomsvcMembershipKey(roomID, userID)] = "join"
+	svc := newTestRoomInteractionService(t, canal, newRoomsvcFakeEventoStorage())
+
+	_, err := svc.GetMessages(context.Background(), roomID, userID, "", "x", 10)
+	if !errors.Is(err, ErrInvalidPaginationDirection) {
+		t.Fatalf("expected ErrInvalidPaginationDirection, got %v", err)
 	}
 }
 

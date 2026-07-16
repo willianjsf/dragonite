@@ -134,22 +134,34 @@ func (s *AuthService) Logout(ctx context.Context, userID, deviceID string) error
 	return nil
 }
 
-func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string, int64, error) {
+func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (string, string, int64, error) {
 	device, err := s.deviceStore.GetDispositivoByRefreshToken(ctx, refreshToken)
 	if err != nil {
-		return "", 0, types.InternalError(err)
+		return "", "", 0, types.InternalError(err)
 	}
 
 	if device.RefreshTokenExpiresAt.Before(time.Now()) {
-		return "", 0, types.ErrUnauthorized
+		return "", "", 0, types.ErrUnauthorized
+	}
+
+	newRefreshToken, refreshExpires, err := util.GenerateRefreshToken()
+	if err != nil {
+		return "", "", 0, types.InternalError(err)
+	}
+
+	device.RefreshToken = newRefreshToken
+	device.RefreshTokenExpiresAt = refreshExpires
+	device.UltimoTimestampVisto = time.Now()
+	if err := s.deviceStore.UpdateDevice(ctx, device); err != nil {
+		return "", "", 0, types.InternalError(err)
 	}
 
 	accessToken, expiresMS, err := util.GenerateAccessToken(device.UsuarioID, device.ID.String(), s.jwtSecret, s.ServerName)
 	if err != nil {
-		return "", 0, types.InternalError(err)
+		return "", "", 0, types.InternalError(err)
 	}
 
-	return accessToken, expiresMS, nil
+	return accessToken, newRefreshToken, expiresMS, nil
 }
 
 type RegisterParams struct {

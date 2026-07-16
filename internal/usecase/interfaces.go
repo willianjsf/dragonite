@@ -63,6 +63,7 @@ type EventoStorage interface {
 	// Retorna todos os eventos com base em SyncToken. Retorna uma lista de eventos ordenados com base em StreamOrdering
 	GetSince(ctx context.Context, userID string, since domain.SyncToken) ([]domain.Evento, error)
 	GetMaxDepthFromEventos(ctx context.Context, eventIDs []string) (int64, error)
+	GetMaxStreamOrdering(ctx context.Context) (int64, error)
 	SaveEvento(ctx context.Context, event *domain.Evento) error
 	GetEvento(ctx context.Context, eventID string) (*domain.Evento, error)
 	GetEventsSince(ctx context.Context, roomID string, limit int, eventIDs []string) ([]domain.Evento, error)
@@ -142,4 +143,12 @@ type RemoteMediaFetcher interface {
 // federação (S2S), usado quando o domínio do alias não é o deste homeserver
 type RemoteDirectoryResolver interface {
 	QueryDirectory(ctx context.Context, remoteServer, roomAlias string) (roomID string, servers []string, err error)
+}
+
+// PresenceStorage define as operações de persistência do estado de presença dos usuários
+type PresenceStorage interface {
+	// UpsertPresence insere ou atualiza o estado de presença de um usuário
+	UpsertPresence(ctx context.Context, presence domain.Presence) error
+	// GetPresence retorna o estado de presença de um usuário, ou (nil, nil) se nunca foi definido
+	GetPresence(ctx context.Context, userID string) (*domain.Presence, error)
 }

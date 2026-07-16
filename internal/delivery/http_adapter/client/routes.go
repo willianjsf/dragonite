@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/account"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/auth"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/media"
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/presence"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/profile"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/rooms"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
@@ -32,6 +34,7 @@ type Handler struct {
 	roomInteractions *usecase.RoomInteractionService
 	mediaService     *usecase.MediaService
 	idempotencyCache infrastructure.IdempotencyCache
+	presenceService  *usecase.PresenceService
 	serverName       string
 }
 
@@ -48,6 +51,7 @@ func NewHandler(
 	roomInteractions *usecase.RoomInteractionService,
 	mediaService *usecase.MediaService,
 	idempotencyCache infrastructure.IdempotencyCache,
+	presenceService *usecase.PresenceService,
 ) *Handler {
 	return &Handler{
 		serverName:       serverName,
@@ -62,6 +66,7 @@ func NewHandler(
 		authService:      authService,
 		mediaService:     mediaService,
 		idempotencyCache: idempotencyCache,
+		presenceService:  presenceService,
 	}
 }
 
@@ -87,6 +92,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	// upload de mídia
 	mediaHandler := media.NewHandler(h.mediaService)
 	mediaHandler.RegisterRoutes(mux, authMiddleware)
+
+	// presence (online/offline/unavailable)
+	presenceHandler := presence.NewHandler(h.presenceService)
+	presenceHandler.RegisterRoutes(mux, authMiddleware)
 
 	// sincronização de dados
 	mux.Handle("GET /_matrix/client/v3/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil
@@ -278,23 +287,34 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	req.Filter = r.FormValue("filter")
 	req.FullState = r.FormValue("full_state") == "true"
 	req.SetPresence = SetPresence(r.FormValue("set_presence"))
+
 	timeoutStr := r.FormValue("timeout")
 	var timeout int
 	var err error
 	if timeoutStr != "" {
-		timeout, err = strconv.Atoi(timeoutStr)
+		parsedTimeout, err := strconv.Atoi(timeoutStr)
 		if err != nil {
 			httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_UNKNOWN, "could not parse timeout. Expected integer")
 			return
 		}
+		timeout = parsedTimeout
 	}
-	req.Timeout = time.Duration(timeout) * time.Millisecond
-	if err != nil {
-		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "could not get events")
-		return
+	if timeout == 0 {
+		timeout = 30000 // 30s
 	}
 
+	req.Timeout = time.Duration(timeout) * time.Millisecond
+
 	response, err := h.syncService.SyncClient(r.Context(), userID, req.Since, req.Timeout)
+	if err != nil {
+		if r.Context().Err() == context.Canceled {
+			w.WriteHeader(499)
+			return
+		}
+		log.Printf("[%s] [ERROR] SyncClient: %s", time.Now().Format("2006-01-02 15:04:05"), err.Error())
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, fmt.Errorf("could not get events: %w", err).Error())
+		return
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
 }

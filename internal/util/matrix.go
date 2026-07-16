@@ -6,14 +6,18 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/gibson042/canonicaljson-go"
 )
 
 func CreateRoomID(serverName string) string {
-	roomID := make([]byte, 16)
-	rand.Read(roomID)
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return fmt.Sprintf("!%s:%s", time.Now().Format(time.RFC3339Nano), serverName)
+	}
+	roomID := base64.RawURLEncoding.EncodeToString(bytes)
 	return fmt.Sprintf("!%s:%s", roomID, serverName)
 }
 
@@ -47,6 +51,7 @@ func HashMatrixEvent(event *domain.Evento) (string, error) {
 	// another server signs it!
 	delete(eventMap, "unsigned")
 	delete(eventMap, "signatures")
+	delete(eventMap, "event_id")
 
 	// 3. GENERATE CANONICAL JSON
 	// Go's json package automatically sorts map keys alphabetically, which

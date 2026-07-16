@@ -130,15 +130,16 @@ func (h *Handler) postRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, expiresMS, err := h.authService.Refresh(ctx, payload.RefreshToken)
+	accessToken, refreshToken, expiresMS, err := h.authService.Refresh(ctx, payload.RefreshToken)
 	if err != nil {
 		httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNAUTHORIZED, "Refresh token is invalid")
 		return
 	}
 
 	response := RefreshResponse{
-		AccessToken: accessToken,
-		ExpireMS:    &expiresMS,
+		AccessToken:  accessToken,
+		ExpireMS:     &expiresMS,
+		RefreshToken: refreshToken,
 	}
 	httputil.WriteJSON(w, 200, response)
 }

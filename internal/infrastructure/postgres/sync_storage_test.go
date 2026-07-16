@@ -195,3 +195,55 @@ func TestPostgresSyncMethods(t *testing.T) {
 		t.Fatalf("expected left-room event evt_left_1, got %+v", leftEvents)
 	}
 }
+
+func TestGetRoomMessagesHistoryOrderingAndPagination(t *testing.T) {
+	ctx := context.Background()
+	store, cleanup := setupSyncStorageTestDB(t)
+	defer cleanup()
+
+	roomID := "!room-history:example.com"
+
+	_, err := store.db.Exec(ctx, `
+		INSERT INTO Evento (id_evento, tipo, id_canal, sender, origin_server_ts, content, state_key) VALUES
+			('evt_1', 'm.room.message', $1, '@bob:example.com', 1000, '{"body":"1"}', NULL),
+			('evt_2', 'm.room.message', $1, '@bob:example.com', 1100, '{"body":"2"}', NULL),
+			('evt_3', 'm.room.message', $1, '@bob:example.com', 1200, '{"body":"3"}', NULL)
+	`, roomID)
+	if err != nil {
+		t.Fatalf("insert room events: %v", err)
+	}
+
+	backwardPage, err := store.GetRoomMessagesHistory(ctx, roomID, 0, "b", 2)
+	if err != nil {
+		t.Fatalf("GetRoomMessagesHistory backwards: %v", err)
+	}
+	if len(backwardPage) != 2 {
+		t.Fatalf("expected 2 events in backward page, got %d", len(backwardPage))
+	}
+	if backwardPage[0].ID != "evt_3" || backwardPage[1].ID != "evt_2" {
+		t.Fatalf("expected reverse-chronological order [evt_3 evt_2], got [%s %s]", backwardPage[0].ID, backwardPage[1].ID)
+	}
+
+	nextBackward, err := store.GetRoomMessagesHistory(ctx, roomID, backwardPage[1].StreamOrdering, "b", 2)
+	if err != nil {
+		t.Fatalf("GetRoomMessagesHistory backwards next page: %v", err)
+	}
+	if len(nextBackward) != 1 || nextBackward[0].ID != "evt_1" {
+		t.Fatalf("expected remaining backward event evt_1, got %+v", nextBackward)
+	}
+
+	var soEvt1 int64
+	if err := store.db.QueryRow(ctx, "SELECT stream_ordering FROM Evento WHERE id_evento = 'evt_1'").Scan(&soEvt1); err != nil {
+		t.Fatalf("query evt_1 stream ordering: %v", err)
+	}
+	forwardPage, err := store.GetRoomMessagesHistory(ctx, roomID, soEvt1, "f", 2)
+	if err != nil {
+		t.Fatalf("GetRoomMessagesHistory forward: %v", err)
+	}
+	if len(forwardPage) != 2 {
+		t.Fatalf("expected 2 events in forward page, got %d", len(forwardPage))
+	}
+	if forwardPage[0].ID != "evt_2" || forwardPage[1].ID != "evt_3" {
+		t.Fatalf("expected chronological order [evt_2 evt_3], got [%s %s]", forwardPage[0].ID, forwardPage[1].ID)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"time"
 
@@ -56,6 +57,7 @@ type EventParams struct {
 	SenderID  string
 	Content   map[string]any
 	EventType string
+	TxnID     string
 }
 
 type StateParams struct {
@@ -171,6 +173,10 @@ func (s *RoomInteractionService) SendEvent(ctx context.Context, params EventPara
 		OrigemServidorTS: time.Now().UnixMilli(),
 	}
 
+	if params.TxnID != "" {
+		newEvent.Unsigned, _ = json.Marshal(map[string]any{"transaction_id": params.TxnID})
+	}
+
 	// ATOMIC DATABASE TRANSACTION
 	err = s.uow.Execute(ctx, func(txCtx context.Context) error {
 		// 3. Resolve DAG Dependencies (The VIP Pass and the Timeline)
@@ -251,12 +257,19 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 	if err != nil || status != "join" {
 		return nil, types.ErrForbidden
 	}
+	if dir != "b" && dir != "f" {
+		return nil, ErrInvalidPaginationDirection
+	}
 
 	// Converter o token "from" num stream_ordering (int64)
 	var fromToken int64
 	if from != "" {
-		parsed, err := strconv.ParseInt(from, 10, 64)
-		if err == nil {
+		// 1. Tentar primeiro interpretar usando o formato padrão de SyncToken do Matrix (ex: "s15_0_0")
+		token := domain.ParseToken(from)
+		if token.TimelinePosition != 0 {
+			fromToken = token.TimelinePosition
+		} else if parsed, err := strconv.ParseInt(from, 10, 64); err == nil {
+			// 2. Fallback caso o cliente tenha passado um número puro (ex: "15")
 			fromToken = parsed
 		}
 	}
@@ -267,17 +280,34 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 		return nil, fmt.Errorf("failed to get messages history: %w", err)
 	}
 
+	log.Println(eventos)
+
+	if eventos == nil {
+		eventos = []domain.Evento{}
+	}
+
+	// Determinar o token de paginação 'start'
+	startToken := from
+	if startToken == "" {
+		if len(eventos) > 0 {
+			startToken = domain.SyncToken{TimelinePosition: eventos[0].StreamOrdering}.Encode()
+		} else {
+			startToken = domain.SyncToken{TimelinePosition: fromToken}.Encode()
+		}
+	}
+
 	// Determinar o token de paginação 'end' com base no último evento do chunk
 	var endToken string
 	if len(eventos) > 0 {
 		lastEvent := eventos[len(eventos)-1]
-		endToken = strconv.FormatInt(lastEvent.StreamOrdering, 10)
+		// IMPORTANT: O token gerado DEVE ser formatado como SyncToken para consistência no cliente
+		endToken = domain.SyncToken{TimelinePosition: lastEvent.StreamOrdering}.Encode()
 	} else {
-		endToken = from // Se não houver mais eventos, o fim é igual ao início
+		endToken = ""
 	}
 
 	return &GetMessagesResponse{
-		Start: from,
+		Start: startToken,
 		End:   endToken,
 		Chunk: eventos,
 	}, nil
@@ -307,12 +337,10 @@ func (s *RoomInteractionService) GetEvent(ctx context.Context, userID, roomID, e
 		return nil, types.ErrForbidden
 	}
 
-
 	evento, err := s.eventoRepo.GetEvento(ctx, eventID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch event: %w", err)
 	}
-
 
 	if evento.CanalID != roomID {
 		return nil, types.ErrForbidden
@@ -329,12 +357,10 @@ func (s *RoomInteractionService) GetRoomState(ctx context.Context, userID, roomI
 		return nil, types.ErrForbidden
 	}
 
-
 	stateEvents, err := s.eventoRepo.GetCurrentStateEvents(ctx, roomID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch current state events: %w", err)
 	}
-
 
 	if stateEvents == nil {
 		stateEvents = []domain.Evento{}
@@ -441,11 +467,14 @@ func (s *RoomInteractionService) GetJoinedMembers(ctx context.Context, userID, r
 		}
 	}
 
-  return joined, nil
+	return joined, nil
 }
 
 // ErrStateNotFound é retornado quando não existe state event com o tipo/chave pedidos
 var ErrStateNotFound = errors.New("state event not found")
+
+// ErrInvalidPaginationDirection é retornado quando dir não é "b" nem "f".
+var ErrInvalidPaginationDirection = errors.New("invalid pagination direction")
 
 func (s *RoomInteractionService) GetStateEventContent(ctx context.Context, roomID, userID, eventType, stateKey string) (*domain.Evento, error) {
 	status, found, err := s.canalRepo.GetUserMembershipRecord(ctx, roomID, userID)

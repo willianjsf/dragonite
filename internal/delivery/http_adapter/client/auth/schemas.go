@@ -28,7 +28,7 @@ type LoginReponse struct {
 	AccessToken  string `json:"access_token"`
 	DeviceID     string `json:"device_id"`
 	UserID       string `json:"user_id"`
-	ExpireMS     *int64 `json:"expire_ms,omitempty"`
+	ExpireMS     *int64 `json:"expire_in_ms,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	// TODO: add Identity server information
 }
@@ -41,7 +41,7 @@ type RefreshRequest struct {
 // RefreshResponse represents a response body for POST /refresh
 type RefreshResponse struct {
 	AccessToken  string `json:"access_token"`
-	ExpireMS     *int64 `json:"expire_ms,omitempty"`
+	ExpireMS     *int64 `json:"expire_in_ms,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
@@ -76,6 +76,6 @@ type RegisterResponse struct {
 	UserID       string `json:"user_id"` // required
 	AccessToken  string `json:"access_token,omitempty"`
 	DeviceID     string `json:"device_id,omitempty"`
-	ExpireMS     *int64 `json:"expire_ms,omitempty"`
+	ExpireMS     *int64 `json:"expire_in_ms,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 }

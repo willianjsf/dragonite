@@ -171,7 +171,7 @@ func TestAuthServiceRefreshExpiredToken(t *testing.T) {
 
 	svc := NewAuthService("jwt-secret", "example.com", &fakeUserStore{}, deviceStore)
 
-	_, _, err := svc.Refresh(context.Background(), "refresh-token")
+	_, _, _, err := svc.Refresh(context.Background(), "refresh-token")
 	if !errors.Is(err, types.ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized, got %v", err)
 	}
