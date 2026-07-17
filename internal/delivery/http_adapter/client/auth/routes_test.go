@@ -118,7 +118,7 @@ func TestPostLoginSuccess(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
 
-	var resp LoginReponse
+	var resp LoginResponse
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}

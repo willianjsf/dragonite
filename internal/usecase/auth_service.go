@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -51,8 +52,13 @@ func (s *AuthService) Login(ctx context.Context, params LoginParams) (LoginSucce
 		return LoginSuccess{}, types.ErrUnimplemented
 	}
 
-	localpart := fmt.Sprintf("@%s:%s", params.Indentifier.User, s.ServerName)
-	user, err := s.userStore.GetUsuarioByID(ctx, localpart)
+	mxid := params.Indentifier.User
+	// Se não começar com '@', assumimos que é apenas o localpart e montamos o ID completo
+	if !strings.HasPrefix(mxid, "@") {
+		mxid = fmt.Sprintf("@%s:%s", params.Indentifier.User, s.ServerName)
+	}
+
+	user, err := s.userStore.GetUsuarioByID(ctx, mxid)
 	if err != nil || user == nil {
 		log.Printf("[DEBUG: (Login) auth_service] %v: %v", user, err)
 		return LoginSuccess{}, types.ErrInvalidCredentials

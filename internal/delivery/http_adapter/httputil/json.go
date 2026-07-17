@@ -79,3 +79,15 @@ func WriteMatrixError(w http.ResponseWriter, status int, errcode MatrixErrorCode
 		Message: message,
 	})
 }
+
+// WriteMatrixErrorSoftLogout escreve um erro do Matrix marcado como "soft logout".
+// Use apenas quando o token era válido e apenas expirou.
+func WriteMatrixErrorSoftLogout(w http.ResponseWriter, status int, errcode MatrixErrorCode, message string) {
+	log.Printf("[%s] [DEBUG] MatrixError (soft_logout): %s - %s", time.Now().Format("2006-01-02 15:04:05"), errcode, message)
+	WriteJSON(w, status, MatrixErrorResponse{
+		ErrCode:    errcode,
+		Message:    message,
+		SoftLogout: true,
+	})
+}
+

@@ -153,6 +153,9 @@ func (h *Handler) getVersions(w http.ResponseWriter, r *http.Request) {
 			"v1.11", // Current standard support in many clients
 			"v1.18",
 		},
+		UnstableFeatures: map[string]bool{
+			"org.matrix.msc2967.refresh_tokens": true,
+		},
 	}
 	httputil.WriteJSON(w, 200, response)
 }

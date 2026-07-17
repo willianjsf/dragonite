@@ -2,6 +2,7 @@ package http_adapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -83,8 +84,20 @@ func (s *Server) TokenBearerMiddleware(next http.Handler) http.Handler {
 			}
 			return []byte(s.jwtSecret), nil
 		})
-		if err != nil || !token.Valid {
+		if err != nil {
+			// Token expirado, mas estruturalmente válido: sinaliza soft_logout
+			// para que o cliente (Element, etc) tente POST /refresh em vez de
+			// deslogar o usuário imediatamente
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				httputil.WriteMatrixErrorSoftLogout(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, "Access token has expired")
+				return
+			}
+ 
 			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, fmt.Errorf("Invalid token: %w", err).Error())
+			return
+		}
+		if !token.Valid {
+			httputil.WriteMatrixError(w, http.StatusUnauthorized, httputil.M_UNKNOWN_TOKEN, "Invalid token")
 			return
 		}
 
