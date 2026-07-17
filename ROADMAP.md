@@ -52,6 +52,11 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [x] POST /\_matrix/media/v3/upload
 - [x] GET /\_matrix/client/v1/media/download/{serverName}/{mediaId}
 - [x] GET /\_matrix/client/v1/media/thumbnail/{serverName}/{mediaId}
+- [X]GET /_matrix/client/v3/room_keys/version
+- [X]POST /_matrix/client/v3/room_keys/version
+- [X] GET /\_matrix/client/v3/room_keys/keys
+- [X] PUT /\_matrix/client/v3/room_keys/keys *(upsert last-write-wins; sem a regra de "manter a melhor chave" da spec)*
+- [X] DELETE /\_matrix/client/v3/room_keys/keys
 
 ### Opcionais
 

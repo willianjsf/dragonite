@@ -1,1 +1,2 @@
+DROP TABLE IF EXISTS ChaveBackup;
 DROP TABLE IF EXISTS VersaoBackup;

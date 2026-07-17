@@ -24,3 +24,14 @@ type VersaoBackup struct {
 func (v VersaoBackup) VersionString() string {
 	return strconv.FormatInt(v.IDVersao, 10)
 }
+
+// ChaveBackup representa uma chave de sessão megolm armazenada numa versão de backup
+type ChaveBackup struct {
+	IDVersao          int64
+	IDCanal           string // room ID
+	IDSessao          string // session ID
+	FirstMessageIndex int64
+	ForwardedCount    int64
+	IsVerified        bool
+	SessionData       json.RawMessage
+}

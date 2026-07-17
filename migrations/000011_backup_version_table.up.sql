@@ -9,3 +9,14 @@ CREATE TABLE IF NOT EXISTS VersaoBackup (
 );
 
 CREATE INDEX IF NOT EXISTS idx_versaobackup_usuario ON VersaoBackup (id_usuario, id_versao DESC);
+
+CREATE TABLE IF NOT EXISTS ChaveBackup (
+    id_versao BIGINT NOT NULL REFERENCES VersaoBackup(id_versao) ON DELETE CASCADE,
+    id_canal VARCHAR(255) NOT NULL,
+    id_sessao VARCHAR(255) NOT NULL,
+    first_message_index BIGINT NOT NULL,
+    forwarded_count BIGINT NOT NULL DEFAULT 0,
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    session_data JSONB NOT NULL,
+    PRIMARY KEY (id_versao, id_canal, id_sessao)
+);
