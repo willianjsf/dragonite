@@ -53,7 +53,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/members", authMiddleware(http.HandlerFunc(h.getRoomMembers)))
 	// Requerem autenticação
 	mux.Handle("POST /_matrix/client/v3/createRoom", authMiddleware(http.HandlerFunc(h.postCreateRoom)))
-	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/join", authMiddleware(http.HandlerFunc(h.postJoinRoom)))
+	mux.Handle("POST /_matrix/client/v3/join/{roomId}", authMiddleware(http.HandlerFunc(h.postJoinRoom)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/leave", authMiddleware(http.HandlerFunc(h.postLeaveRoom)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/invite", authMiddleware(http.HandlerFunc(h.postInviteRoom)))
 	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/send/{eventType}/{txnId}", authMiddleware(http.HandlerFunc(h.putSendEvent)))
@@ -68,14 +68,13 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state/{eventType}/", authMiddleware(http.HandlerFunc(h.getRoomState)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/messages", authMiddleware(http.HandlerFunc(h.getRoomMessages)))
 
-	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/initialSync", authMiddleware(http.HandlerFunc(h.getInitialSync)))
 	// marcação de leitura (mock)
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/receipt/{receiptType}/{eventId}", authMiddleware(http.HandlerFunc(h.postReceipt)))
 	mux.Handle("POST /_matrix/client/v3/rooms/{roomId}/read_markers", authMiddleware(http.HandlerFunc(h.postReadMarkers)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/event/{eventId}", authMiddleware(http.HandlerFunc(h.getEvent)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/state", authMiddleware(http.HandlerFunc(h.getRoomStateAll)))
 	mux.Handle("GET /_matrix/client/v3/rooms/{roomId}/joined_members", authMiddleware(http.HandlerFunc(h.getJoinedMembers)))
-    mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/typing/{userId}", authMiddleware(http.HandlerFunc(h.putTyping)))
+	mux.Handle("PUT /_matrix/client/v3/rooms/{roomId}/typing/{userId}", authMiddleware(http.HandlerFunc(h.putTyping)))
 }
 
 // getPublicRooms lista as salas públicas do servidor.
@@ -835,10 +834,4 @@ func (h *Handler) getRoomMembers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
-// getInitialSync retorna o estado inicial da sala
-// GET /_matrix/client/v3/rooms/{roomId}/initialSync
-func (h *Handler) getInitialSync(w http.ResponseWriter, r *http.Request) {
-
 }
