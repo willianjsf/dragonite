@@ -6,6 +6,7 @@ import (
 	"log"
 	"sync"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,11 +22,12 @@ func NewPostgresNotifier(db *pgxpool.Pool) *PostgresNotifier {
 
 // StartBackgroundListener starts a background listener for matrix_sync_client notifications.
 func (p *PostgresNotifier) StartBackgroundListener(ctx context.Context) error {
-	conn, err := p.db.Acquire(ctx)
+	connString := p.db.Config().ConnString()
+	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {
 		return fmt.Errorf("Failed to acquire connection: %w", err)
 	}
-	defer conn.Release()
+	defer conn.Close(ctx)
 
 	_, err = conn.Exec(ctx, "LISTEN matrix_room_sync_channel")
 	if err != nil {
@@ -33,7 +35,7 @@ func (p *PostgresNotifier) StartBackgroundListener(ctx context.Context) error {
 	}
 
 	for {
-		notif, err := conn.Conn().WaitForNotification(ctx)
+		notif, err := conn.WaitForNotification(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()

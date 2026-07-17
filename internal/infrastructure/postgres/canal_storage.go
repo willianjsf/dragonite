@@ -216,12 +216,12 @@ func (s *PostgresStorage) GetAllPublic(ctx context.Context, offset, limit int) (
 	db := getTxOrPool(ctx, s.db)
 	// NOTE: pega todos os canais onde join_rules é public
 	rows, err := db.Query(ctx, `
-	    SELECT id_canal, versao_canal, criador, created_at
+	    SELECT c.id_canal, c.versao_canal, c.criador, c.created_at
 		FROM Canal c
 		INNER JOIN Canal_Estado_Atual e ON c.id_canal = e.id_canal
 		LEFT JOIN Evento e2 ON e.id_evento = e2.id_evento
-		WHERE e2.tipo = 'm.room.member' AND e2.content->>join_rules = 'public'
-	    ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+		WHERE e2.tipo = 'm.room.join_rules' AND e2.content->>'join_rule' = 'public'
+	    ORDER BY c.created_at DESC LIMIT $1 OFFSET $2`,
 		limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get public canals: %w", err)

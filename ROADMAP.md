@@ -52,18 +52,22 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [x] POST /\_matrix/media/v3/upload
 - [x] GET /\_matrix/client/v1/media/download/{serverName}/{mediaId}
 - [x] GET /\_matrix/client/v1/media/thumbnail/{serverName}/{mediaId}
-- [X]GET /_matrix/client/v3/room_keys/version
-- [X]POST /_matrix/client/v3/room_keys/version
+- [X] GET /_matrix/client/v3/room_keys/version
+- [X] POST /_matrix/client/v3/room_keys/version
 - [X] GET /\_matrix/client/v3/room_keys/keys
 - [X] PUT /\_matrix/client/v3/room_keys/keys *(upsert last-write-wins; sem a regra de "manter a melhor chave" da spec)*
 - [X] DELETE /\_matrix/client/v3/room_keys/keys
+- [X] POST /_matrix/client/v3/keys/device_signing/upload *(feito só mock)*
+- [X] POST /_matrix/client/v3/keys/signatures/upload *(feito só mock)*
+- [X] POST /_matrix/client/v3/keys/upload *(feito só mock)*
+- [X] POST /_matrix/client/v3/keys/query  *(feito só mock)*
 
 ### Opcionais
 
 - [ ] POST /\_matrix/client/v3/logout/all — *derrubar todas as sessões do usuário de uma vez, útil se um token vazar.*
 - [ ] POST /\_matrix/client/v3/account/password — *deixar o usuário trocar a própria senha sem intervenção manual.*
 - [ ] POST /\_matrix/client/v3/account/deactivate — *permitir exclusão de conta pelo próprio usuário.*
-- [X] GET /\_matrix/client/v3/user/{userId}/filter/{filterId} — *só relevante se o `filter` deixar de ser mock e passar a restringir eventos de verdade no `/sync`.*
+- [X] GET /\_matrix/client/v3/user/{userId}/filter/{filterId} — *(só o mock atualmente)*
 - [x] DELETE /\_matrix/client/v3/profile/{userId}/{keyName} — *permite limpar displayname/avatar.*
 - [ ] POST /\_matrix/client/v3/join/{roomIdOrAlias} — *permitir entrar numa sala por alias amigável, não só por room ID.*
 - [ ] POST /\_matrix/client/v3/rooms/{roomId}/forget — *limpar o histórico local de uma sala já deixada, evitando que ela reapareça em syncs futuros.*
@@ -195,13 +199,7 @@ e não existe pusher registrado).
 
 ## Prioridades sugeridas (dentro dos obrigatórios que faltam)
 
-- [ ] GET /\_matrix/client/v3/user/{userId}/filter/{filterId} 
-- [X] GET/PUT/DELETE /\_matrix/client/v3/directory/room/{roomAlias}
+
 - Bug da rota upload
 - Bug na rota refresh
-- [X] POST /_matrix/client/v3/keys/upload
-- [X]POST /_matrix/client/v3/keys/query
 
-Menos importante:
-- POST /_matrix/client/v3/keys/query
-- POST /_matrix/client/v3/keys/upload
