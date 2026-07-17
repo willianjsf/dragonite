@@ -101,7 +101,7 @@ func (h *Handler) postLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := LoginReponse{
+	response := LoginResponse{
 		AccessToken:  success.AccessToken,
 		DeviceID:     success.DeviceID,
 		UserID:       success.UserID,

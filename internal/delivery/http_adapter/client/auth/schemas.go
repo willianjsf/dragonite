@@ -21,14 +21,15 @@ type LoginRequest struct {
 	Token                    string                `json:"token,omitempty"`
 	DeviceID                 string                `json:"device_id,omitempty"`
 	InitialDeviceDisplayName string                `json:"initial_device_display_name,omitempty"`
+	RefreshToken             bool                  `json:"refresh_token,omitempty"`
 }
 
-// LoginReponse represents a response body for POST /login
-type LoginReponse struct {
+// LoginResponse represents a response body for POST /login
+type LoginResponse struct {
 	AccessToken  string `json:"access_token"`
 	DeviceID     string `json:"device_id"`
 	UserID       string `json:"user_id"`
-	ExpireMS     *int64 `json:"expire_in_ms,omitempty"`
+	ExpireMS     *int64 `json:"expires_in_ms,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 	// TODO: add Identity server information
 }
@@ -41,7 +42,7 @@ type RefreshRequest struct {
 // RefreshResponse represents a response body for POST /refresh
 type RefreshResponse struct {
 	AccessToken  string `json:"access_token"`
-	ExpireMS     *int64 `json:"expire_in_ms,omitempty"`
+	ExpireMS     *int64 `json:"expires_in_ms,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
@@ -76,6 +77,6 @@ type RegisterResponse struct {
 	UserID       string `json:"user_id"` // required
 	AccessToken  string `json:"access_token,omitempty"`
 	DeviceID     string `json:"device_id,omitempty"`
-	ExpireMS     *int64 `json:"expire_in_ms,omitempty"`
+	ExpireMS     *int64 `json:"expires_in_ms,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 }

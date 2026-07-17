@@ -44,6 +44,7 @@ const (
 type MatrixErrorResponse struct {
 	ErrCode MatrixErrorCode `json:"errcode"`
 	Message string          `json:"error"`
+	SoftLogout bool 		`json:"soft_logout,omitempty"`
 }
 
 // NewErrorResponse creates error reponses in the matrix error format
