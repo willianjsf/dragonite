@@ -147,8 +147,19 @@ type RemoteDirectoryResolver interface {
 
 // PresenceStorage define as operações de persistência do estado de presença dos usuários
 type PresenceStorage interface {
-	// UpsertPresence insere ou atualiza o estado de presença de um usuário
 	UpsertPresence(ctx context.Context, presence domain.Presence) error
-	// GetPresence retorna o estado de presença de um usuário, ou (nil, nil) se nunca foi definido
 	GetPresence(ctx context.Context, userID string) (*domain.Presence, error)
+}
+
+// BackupStorage define as operações de persistência das versões de backup de chaves (Server-side Key Backup)
+type BackupStorage interface {
+	CreateBackupVersion(ctx context.Context, backup *domain.VersaoBackup) error
+	GetLatestBackupVersion(ctx context.Context, userID string) (*domain.VersaoBackup, error)
+	// GetBackupVersionByID busca uma versão específica pertencente ao usuário (não precisa ser a latest)
+	GetBackupVersionByID(ctx context.Context, userID string, versionID int64) (*domain.VersaoBackup, error)
+	GetRoomKeys(ctx context.Context, versionID int64) ([]domain.ChaveBackup, error)
+	// PutRoomKeys insere/atualiza as chaves (upsert) e retorna a contagem total e o novo etag
+	PutRoomKeys(ctx context.Context, versionID int64, keys []domain.ChaveBackup) (count int64, etag string, err error)
+	// DeleteRoomKeys apaga todas as chaves da versão e retorna a contagem (0) e o novo etag
+	DeleteRoomKeys(ctx context.Context, versionID int64) (count int64, etag string, err error)
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/media"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/presence"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/profile"
+	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/roomkeys"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/client/rooms"
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -35,6 +36,7 @@ type Handler struct {
 	mediaService     *usecase.MediaService
 	idempotencyCache infrastructure.IdempotencyCache
 	presenceService  *usecase.PresenceService
+	backupService    *usecase.BackupService
 	serverName       string
 }
 
@@ -52,6 +54,7 @@ func NewHandler(
 	mediaService *usecase.MediaService,
 	idempotencyCache infrastructure.IdempotencyCache,
 	presenceService *usecase.PresenceService,
+	backupService *usecase.BackupService,
 ) *Handler {
 	return &Handler{
 		serverName:       serverName,
@@ -67,6 +70,7 @@ func NewHandler(
 		mediaService:     mediaService,
 		idempotencyCache: idempotencyCache,
 		presenceService:  presenceService,
+		backupService:    backupService,
 	}
 }
 
@@ -97,6 +101,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	presenceHandler := presence.NewHandler(h.presenceService)
 	presenceHandler.RegisterRoutes(mux, authMiddleware)
 
+	// backup de chaves E2EE (server-side key backup)
+	roomKeysHandler := roomkeys.NewHandler(h.backupService)
+	roomKeysHandler.RegisterRoutes(mux, authMiddleware)
+
 	// sincronização de dados
 	mux.Handle("GET /_matrix/client/v3/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil
 	// busca de usuários
@@ -119,7 +127,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	// chaves de encriptação (mock)
 	mux.Handle("POST /_matrix/client/v3/keys/upload", authMiddleware(http.HandlerFunc(h.uploadKeys)))
 	mux.Handle("POST /_matrix/client/v3/keys/query", authMiddleware(http.HandlerFunc(h.queryKeys)))
-	mux.Handle("GET /_matrix/client/v3/room_keys/version", authMiddleware(http.HandlerFunc(h.getRoomKeysVersion)))
 	mux.Handle("POST /_matrix/client/v3/keys/device_signing/upload", authMiddleware(http.HandlerFunc(h.uploadDeviceSigning)))
 	mux.Handle("POST /_matrix/client/v3/keys/signatures/upload", authMiddleware(http.HandlerFunc(h.uploadDeviceSigning)))
 }
@@ -434,12 +441,6 @@ func (h *Handler) queryKeys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
-func (h *Handler) getRoomKeysVersion(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotFound)
-	w.Write([]byte(`{"errcode": "M_NOT_FOUND", "error": "No backup found"}`))
 }
 
 func (h *Handler) uploadDeviceSigning(w http.ResponseWriter, r *http.Request) {

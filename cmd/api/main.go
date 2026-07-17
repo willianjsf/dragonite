@@ -68,7 +68,7 @@ func main() {
 	authService := usecase.NewAuthService(config.JWTToken, config.ServerName, storage, storage)
 	authRuleResolver := usecase.NewAuthRuleResolver(storage)
 	stateResolver := usecase.NewStateResolverService(authRuleResolver)
-	fedService := usecase.NewFederationService(config.ServerName, config.KeyID, config.PrivateKey, storage, storage, storage, stateResolver)
+	fedService := usecase.NewFederationService(config.ServerName, config.KeyID, config.PrivateKey, storage, storage, storage, *authRuleResolver, stateResolver)
 	dirService := usecase.NewDirectoryService(storage, storage, storage, fedService, config.ServerName)
 	profileService := usecase.NewProfileService(storage)
 	accountService := usecase.NewAccountService(storage)
@@ -80,6 +80,7 @@ func main() {
 	usuarioService := usecase.NewUsuarioService(storage, storage, storage)
 	mediaService := usecase.NewMediaService(config.ServerName, minioStorage, storage, config.MaxUploadBytes, fedService)
 	presenceService := usecase.NewPresenceService(storage, storage)
+	backupService := usecase.NewBackupService(storage, storage)
 
 	// cria servidor
 	server := http_adapter.NewServer(config.ServerPort, config.JWTToken,
@@ -89,6 +90,7 @@ func main() {
 		mediaService,
 		idempoCache,
 		presenceService,
+		backupService,
 		util.FetchRemoteServerKey,
 	)
 
@@ -98,7 +100,6 @@ func main() {
 
 	// Cria uma goroutine/thread para ouvir o sinal de término
 	go gracefulShutdown(server, done)
-
 	// O servidor escuta na porta correspondente e serve as requisições
 	log.Println("Listening on port", server.Addr)
 	err = server.ListenAndServe()

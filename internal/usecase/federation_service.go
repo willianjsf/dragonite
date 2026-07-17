@@ -62,15 +62,16 @@ type FederationService struct {
 	stateResolver    StateResolver
 }
 
-func NewFederationService(serverName, keyID string, privateKey ed25519.PrivateKey, canalStore CanalStorage, eventoStore EventoStorage, uow WorkUnit, stateResolver StateResolver) *FederationService {
+func NewFederationService(serverName, keyID string, privateKey ed25519.PrivateKey, canalStore CanalStorage, eventoStore EventoStorage, uow WorkUnit, authRuleResolver AuthRuleResolver, stateResolver StateResolver) *FederationService {
 	fs := &FederationService{
-		outboundQueue: make(chan domain.Evento),
+		outboundQueue: make(chan domain.Evento, 1000),
 		serverName:    serverName,
 		keyID:         keyID,
 		privateKey:    privateKey,
 		canalStore:    canalStore,
 		eventoStore:   eventoStore,
 		uow:           uow,
+		authRuleResolver: authRuleResolver,
 		stateResolver: stateResolver,
 	}
 
