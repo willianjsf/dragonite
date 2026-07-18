@@ -157,7 +157,7 @@ func (s *KeysService) QueryKeys(ctx context.Context, requestingUserID string, re
 		}
 	}
 
-	// Uma requisição de federação por servidor remoto envolvido (device keys apenas)
+	// Uma requisição de federação por servidor remoto envolvido (device keys + cross-signing)
 	for server, deviceKeysReq := range remoteByServer {
 		remoteResult, err := s.federation.QueryKeysCall(ctx, server, deviceKeysReq)
 		if err != nil {
@@ -165,7 +165,7 @@ func (s *KeysService) QueryKeys(ctx context.Context, requestingUserID string, re
 			result.Failures[server] = map[string]any{}
 			continue
 		}
-		for userID, devices := range remoteResult {
+		for userID, devices := range remoteResult.DeviceKeys {
 			devMap := make(map[string]domain.ChavesDispositivo, len(devices))
 			for deviceID, raw := range devices {
 				var parsed struct {
@@ -186,9 +186,53 @@ func (s *KeysService) QueryKeys(ctx context.Context, requestingUserID string, re
 			}
 			result.DeviceKeys[userID] = devMap
 		}
+
+		// user_signing_key nunca é federado (decisão de confiança privada do próprio
+		// usuário), por isso só master_keys/self_signing_keys são processados aqui
+		for userID, raw := range remoteResult.MasterKeys {
+			key, err := parseCrossSigningKeyResponse(userID, "master", raw)
+			if err != nil {
+				log.Printf("[ERROR] QueryKeys (remote master key user=%s): %v", userID, err)
+				continue
+			}
+			result.MasterKeys[userID] = key
+		}
+		for userID, raw := range remoteResult.SelfSigningKeys {
+			key, err := parseCrossSigningKeyResponse(userID, "self_signing", raw)
+			if err != nil {
+				log.Printf("[ERROR] QueryKeys (remote self_signing key user=%s): %v", userID, err)
+				continue
+			}
+			result.SelfSigningKeys[userID] = key
+		}
 	}
 
 	return result
+}
+
+// parseCrossSigningKeyResponse converte o CrossSigningKey bruto recebido via federação
+// (POST .../user/keys/query) para domain.ChaveCrossSigning
+func parseCrossSigningKeyResponse(userID, usage string, raw json.RawMessage) (domain.ChaveCrossSigning, error) {
+	var parsed struct {
+		Keys       json.RawMessage `json:"keys"`
+		Signatures json.RawMessage `json:"signatures"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return domain.ChaveCrossSigning{}, err
+	}
+
+	bareKeyID, err := extractBareKeyID(parsed.Keys)
+	if err != nil {
+		return domain.ChaveCrossSigning{}, err
+	}
+
+	return domain.ChaveCrossSigning{
+		UsuarioID:  userID,
+		Usage:      usage,
+		KeyID:      bareKeyID,
+		Keys:       parsed.Keys,
+		Signatures: parsed.Signatures,
+	}, nil
 }
 
 // ClaimKeysResult é o resultado agregado (local + federado) de uma reivindicação de one-time keys

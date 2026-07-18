@@ -966,11 +966,13 @@ type OutboundKeysQueryRequest struct {
 
 // OutboundKeysQueryResponse é a resposta de POST /_matrix/federation/v1/user/keys/query
 type OutboundKeysQueryResponse struct {
-	DeviceKeys map[string]map[string]json.RawMessage `json:"device_keys"`
+	DeviceKeys      map[string]map[string]json.RawMessage `json:"device_keys"`
+	MasterKeys      map[string]json.RawMessage            `json:"master_keys,omitempty"`
+	SelfSigningKeys map[string]json.RawMessage            `json:"self_signing_keys,omitempty"`
 }
 
 // QueryKeysCall consulta as chaves de identidade de dispositivos de usuários hospedados em remoteServer
-func (f *FederationService) QueryKeysCall(ctx context.Context, remoteServer string, deviceKeys map[string][]string) (map[string]map[string]json.RawMessage, error) {
+func (f *FederationService) QueryKeysCall(ctx context.Context, remoteServer string, deviceKeys map[string][]string) (*OutboundKeysQueryResponse, error) {
 	targetHost, err := util.ResolveServerName(remoteServer)
 	if err != nil {
 		return nil, err
@@ -1014,7 +1016,7 @@ func (f *FederationService) QueryKeysCall(ctx context.Context, remoteServer stri
 		return nil, fmt.Errorf("failed to decode keys/query response: %w", err)
 	}
 
-	return result.DeviceKeys, nil
+	return &result, nil
 }
 
 // OutboundKeysClaimRequest é o payload de POST /_matrix/federation/v1/user/keys/claim

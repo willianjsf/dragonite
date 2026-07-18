@@ -36,12 +36,13 @@ type Handler struct {
 	profileService         *usecase.ProfileService
 	dirService             *usecase.DirectoryService
 	mediaService           *usecase.MediaService
+	keysService            *usecase.KeysService
 	keyFetcher             KeyFetcherFn
 	serverName             string
 	keyCache               sync.Map // map["origin/keyID"]ed25519.PublicKey
 }
 
-func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService, profileService *usecase.ProfileService, dirService *usecase.DirectoryService, mediaService *usecase.MediaService, keyFetcher KeyFetcherFn, serverName string) *Handler {
+func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService, profileService *usecase.ProfileService, dirService *usecase.DirectoryService, mediaService *usecase.MediaService, keysService *usecase.KeysService, keyFetcher KeyFetcherFn, serverName string) *Handler {
 	return &Handler{
 		sysService:             sysService,
 		fedService:             fedService,
@@ -49,6 +50,7 @@ func NewHandler(sysService *usecase.SystemService, fedService *usecase.Federatio
 		profileService:         profileService,
 		dirService:             dirService,
 		mediaService:           mediaService,
+		keysService:            keysService,
 		keyFetcher:             keyFetcher,
 		serverName:             serverName,
 	}
@@ -63,6 +65,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.Handle("GET /_matrix/federation/v1/query/profile", auth(http.HandlerFunc(h.getProfile)))
 	mux.Handle("GET /_matrix/federation/v1/query/directory", auth(http.HandlerFunc(h.getDirectory)))
+	mux.Handle("POST /_matrix/federation/v1/user/keys/query", auth(http.HandlerFunc(h.postUserKeysQuery)))
 	mux.Handle("PUT /_matrix/federation/v2/invite/{roomId}/{eventId}", auth(http.HandlerFunc(h.putInvite)))
 	mux.Handle("PUT /_matrix/federation/v1/send/{txnId}", auth(http.HandlerFunc(h.putSendTxn)))
 	mux.Handle("GET /_matrix/federation/v1/backfill/{roomId}", auth(http.HandlerFunc(h.getBackfill)))
@@ -176,6 +179,82 @@ func (h *Handler) getDirectory(w http.ResponseWriter, r *http.Request) {
 		RoomID:  roomID,
 		Servers: servers,
 	})
+}
+
+// postUserKeysQuery retorna as chaves de identidade e de cross-signing (master/self_signing)
+// dos usuários locais pedidos por um servidor remoto
+// POST /_matrix/federation/v1/user/keys/query
+func (h *Handler) postUserKeysQuery(w http.ResponseWriter, r *http.Request) {
+	var req UserKeysQueryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_BAD_JSON, err.Error())
+		return
+	}
+
+	// Servidores remotos só devem perguntar sobre usuários locais a este homeserver;
+	// entradas de outros domínios são ignoradas silenciosamente
+	localRequested := make(map[string][]string, len(req.DeviceKeys))
+	for userID, deviceIDs := range req.DeviceKeys {
+		parts := strings.SplitN(userID, ":", 2)
+		if len(parts) != 2 || parts[1] != h.serverName {
+			continue
+		}
+		localRequested[userID] = deviceIDs
+	}
+
+	result := h.keysService.QueryKeys(r.Context(), "", localRequested)
+
+	resp := UserKeysQueryResponse{
+		DeviceKeys: make(map[string]map[string]json.RawMessage, len(result.DeviceKeys)),
+	}
+
+	for userID, devices := range result.DeviceKeys {
+		devMap := make(map[string]json.RawMessage, len(devices))
+		for deviceID, dk := range devices {
+			var unsigned *DeviceKeysUnsigned
+			if dk.NomeDispositivo != "" {
+				unsigned = &DeviceKeysUnsigned{DeviceDisplayName: dk.NomeDispositivo}
+			}
+			raw, err := json.Marshal(DeviceKeysInfo{
+				Algorithms: dk.Algorithms,
+				DeviceID:   deviceID,
+				Keys:       dk.Keys,
+				Signatures: dk.Signatures,
+				Unsigned:   unsigned,
+				UserID:     userID,
+			})
+			if err != nil {
+				log.Printf("[ERROR] POST /_matrix/federation/v1/user/keys/query: failed to marshal device keys (user=%s device=%s): %v", userID, deviceID, err)
+				continue
+			}
+			devMap[deviceID] = raw
+		}
+		resp.DeviceKeys[userID] = devMap
+	}
+
+	if len(result.MasterKeys) > 0 {
+		resp.MasterKeys = make(map[string]json.RawMessage, len(result.MasterKeys))
+		for userID, key := range result.MasterKeys {
+			raw, err := json.Marshal(CrossSigningKeyResponse{Keys: key.Keys, Signatures: key.Signatures, Usage: []string{key.Usage}, UserID: userID})
+			if err != nil {
+				continue
+			}
+			resp.MasterKeys[userID] = raw
+		}
+	}
+
+	if len(result.SelfSigningKeys) > 0 {
+		resp.SelfSigningKeys = make(map[string]json.RawMessage, len(result.SelfSigningKeys))
+		for userID, key := range result.SelfSigningKeys {
+			raw, err := json.Marshal(CrossSigningKeyResponse{Keys: key.Keys, Signatures: key.Signatures, Usage: []string{key.Usage}, UserID: userID})
+			if err != nil {
+				continue
+			}
+			resp.SelfSigningKeys[userID] = raw
+		}
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 
 // parseXMatrixHeader decompõe o cabeçalho Authorization: X-Matrix k="v",... num map.
