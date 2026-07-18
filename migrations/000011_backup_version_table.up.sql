@@ -48,3 +48,14 @@ CREATE TABLE IF NOT EXISTS Chave_Fallback (
     usada BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (fk_id_dispositivo, algorithm)
 );
+
+CREATE TABLE IF NOT EXISTS Chave_Cross_Signing (
+    fk_id_usuario VARCHAR(512) NOT NULL REFERENCES Usuario(id_usuario) ON DELETE CASCADE,
+    key_usage VARCHAR(20) NOT NULL CHECK (key_usage IN ('master', 'self_signing', 'user_signing')),
+    key_id VARCHAR(255) NOT NULL, -- chave pública "crua", sem prefixo de algoritmo 
+    public_key JSONB NOT NULL,    -- objeto {"ed25519:<pubkey>": "<pubkey>"}, igual à spec
+    signatures JSONB NOT NULL DEFAULT '{}'::jsonb,
+    PRIMARY KEY (fk_id_usuario, key_usage)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chave_cross_signing_key_id ON Chave_Cross_Signing (key_id);

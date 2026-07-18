@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -181,4 +182,15 @@ type KeysStorage interface {
 	UpsertFallbackKey(ctx context.Context, key domain.ChaveFallback) error
 	// ClaimFallbackKey retorna a fallback key do dispositivo pro algoritmo e a marca como usada
 	ClaimFallbackKey(ctx context.Context, deviceID, algorithm string) (*domain.ChaveFallback, error)
+
+	// UpsertCrossSigningKey insere ou substitui a chave de cross-signing do usuário para um uso (master/self_signing/user_signing)
+	UpsertCrossSigningKey(ctx context.Context, key domain.ChaveCrossSigning) error
+	// GetCrossSigningKeys retorna as chaves de cross-signing de um usuário, indexadas por uso
+	GetCrossSigningKeys(ctx context.Context, userID string) (map[string]domain.ChaveCrossSigning, error)
+
+	// MergeDeviceSignatures funde novas assinaturas nas já armazenadas de um dispositivo. false se o dispositivo não existir.
+	MergeDeviceSignatures(ctx context.Context, userID, deviceID string, newSignatures json.RawMessage) (bool, error)
+	// MergeCrossSigningSignatures funde novas assinaturas nas já armazenadas de uma chave de cross-signing,
+	// identificada pela chave pública crua. false se a chave não existir.
+	MergeCrossSigningSignatures(ctx context.Context, userID, publicKeyID string, newSignatures json.RawMessage) (bool, error)
 }

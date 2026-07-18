@@ -4,3 +4,5 @@ DROP TABLE IF EXISTS VersaoBackup;
 DROP TABLE IF EXISTS Chave_Fallback;
 DROP TABLE IF EXISTS Chave_Uso_Unico;
 DROP TABLE IF EXISTS Chave_Dispositivo;
+
+DROP TABLE IF EXISTS Chave_Cross_Signing;

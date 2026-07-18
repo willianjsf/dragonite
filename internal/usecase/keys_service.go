@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 
@@ -97,46 +98,66 @@ func (s *KeysService) UploadKeys(ctx context.Context, params UploadKeysParams) (
 
 // QueryKeysResult é o resultado agregado (local + federado) de uma consulta de chaves
 type QueryKeysResult struct {
-	DeviceKeys map[string]map[string]domain.ChavesDispositivo // userID -> deviceID -> chaves
-	Failures   map[string]any                                 // servidor -> motivo
+	DeviceKeys      map[string]map[string]domain.ChavesDispositivo // userID -> deviceID -> chaves
+	MasterKeys      map[string]domain.ChaveCrossSigning             // userID -> master key
+	SelfSigningKeys map[string]domain.ChaveCrossSigning             // userID -> self-signing key
+	UserSigningKeys map[string]domain.ChaveCrossSigning             // apenas para requestingUserID, se presente na query
+	Failures        map[string]any
 }
 
-// QueryKeys busca as chaves de identidade dos dispositivos pedidos, roteando para o storage
-// local ou pra federação de acordo com o domínio de cada userID
-func (s *KeysService) QueryKeys(ctx context.Context, requested map[string][]string) QueryKeysResult {
+// QueryKeys busca as chaves de identidade (e, para usuários locais, de cross-signing) dos
+// dispositivos pedidos, roteando para o storage local ou pra federação de acordo com o domínio
+// de cada userID. requestingUserID é necessário porque o user_signing_key só é retornado quando
+// o próprio usuário consulta a si mesmo (ver "Key and signature security" na spec).
+func (s *KeysService) QueryKeys(ctx context.Context, requestingUserID string, requested map[string][]string) QueryKeysResult {
 	result := QueryKeysResult{
-		DeviceKeys: make(map[string]map[string]domain.ChavesDispositivo),
-		Failures:   make(map[string]any),
+		DeviceKeys:      make(map[string]map[string]domain.ChavesDispositivo),
+		MasterKeys:      make(map[string]domain.ChaveCrossSigning),
+		SelfSigningKeys: make(map[string]domain.ChaveCrossSigning),
+		UserSigningKeys: make(map[string]domain.ChaveCrossSigning),
+		Failures:        make(map[string]any),
 	}
 
 	remoteByServer := make(map[string]map[string][]string)
 
 	for userID, deviceIDs := range requested {
 		domainName := util.ExtractDomainFromUserID(userID)
-		if domainName == s.serverName {
-			keys, err := s.keysStore.GetDeviceKeys(ctx, userID, deviceIDs)
-			if err != nil {
-				log.Printf("[ERROR] QueryKeys (local user=%s): %v", userID, err)
-				continue
+		if domainName != s.serverName {
+			if remoteByServer[domainName] == nil {
+				remoteByServer[domainName] = make(map[string][]string)
 			}
-			if len(keys) == 0 {
-				continue
-			}
+			remoteByServer[domainName][userID] = deviceIDs
+			continue
+		}
+
+		keys, err := s.keysStore.GetDeviceKeys(ctx, userID, deviceIDs)
+		if err != nil {
+			log.Printf("[ERROR] QueryKeys (local user=%s): %v", userID, err)
+		} else if len(keys) > 0 {
 			devMap := make(map[string]domain.ChavesDispositivo, len(keys))
 			for _, k := range keys {
 				devMap[k.DispositivoID] = k
 			}
 			result.DeviceKeys[userID] = devMap
+		}
+
+		crossKeys, err := s.keysStore.GetCrossSigningKeys(ctx, userID)
+		if err != nil {
+			log.Printf("[ERROR] QueryKeys cross-signing (user=%s): %v", userID, err)
 			continue
 		}
-
-		if remoteByServer[domainName] == nil {
-			remoteByServer[domainName] = make(map[string][]string)
+		if mk, ok := crossKeys["master"]; ok {
+			result.MasterKeys[userID] = mk
 		}
-		remoteByServer[domainName][userID] = deviceIDs
+		if ssk, ok := crossKeys["self_signing"]; ok {
+			result.SelfSigningKeys[userID] = ssk
+		}
+		if usk, ok := crossKeys["user_signing"]; ok && userID == requestingUserID {
+			result.UserSigningKeys[userID] = usk
+		}
 	}
 
-	// Uma requisição de federação por servidor remoto envolvido
+	// Uma requisição de federação por servidor remoto envolvido (device keys apenas)
 	for server, deviceKeysReq := range remoteByServer {
 		remoteResult, err := s.federation.QueryKeysCall(ctx, server, deviceKeysReq)
 		if err != nil {
@@ -242,4 +263,135 @@ func (s *KeysService) addClaimedKey(dst map[string]map[string]map[string]json.Ra
 		dst[userID][deviceID] = make(map[string]json.RawMessage)
 	}
 	dst[userID][deviceID][keyID] = data
+}
+
+// UploadCrossSigningKeysParams agrupa os dados de POST /_matrix/client/v3/keys/device_signing/upload.
+// Cada campo é o objeto CrossSigningKey bruto (json.RawMessage) como enviado pelo cliente; nil se omitido
+type UploadCrossSigningKeysParams struct {
+	UserID         string
+	MasterKey      json.RawMessage
+	SelfSigningKey json.RawMessage
+	UserSigningKey json.RawMessage
+}
+
+// UploadCrossSigningKeys persiste as chaves de cross-signing do usuário.
+// NOTE: não exige User-Interactive Authentication nem valida criptograficamente as assinaturas
+// entre as chaves, mesma simplificação já adotada em ProcessInboundPDU
+func (s *KeysService) UploadCrossSigningKeys(ctx context.Context, params UploadCrossSigningKeysParams) error {
+	entries := []struct {
+		usage string
+		raw   json.RawMessage
+	}{
+		{"master", params.MasterKey},
+		{"self_signing", params.SelfSigningKey},
+		{"user_signing", params.UserSigningKey},
+	}
+
+	for _, e := range entries {
+		if len(e.raw) == 0 {
+			continue
+		}
+
+		var parsed struct {
+			Keys       json.RawMessage `json:"keys"`
+			Signatures json.RawMessage `json:"signatures"`
+		}
+		if err := json.Unmarshal(e.raw, &parsed); err != nil {
+			return fmt.Errorf("invalid %s key: %w", e.usage, err)
+		}
+
+		bareKeyID, err := extractBareKeyID(parsed.Keys)
+		if err != nil {
+			return fmt.Errorf("invalid %s key: %w", e.usage, err)
+		}
+
+		err = s.keysStore.UpsertCrossSigningKey(ctx, domain.ChaveCrossSigning{
+			UsuarioID:  params.UserID,
+			Usage:      e.usage,
+			KeyID:      bareKeyID,
+			Keys:       parsed.Keys,
+			Signatures: parsed.Signatures,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to store %s key: %w", e.usage, err)
+		}
+	}
+
+	return nil
+}
+
+// extractBareKeyID extrai o identificador cru (sem prefixo de algoritmo) da única entrada
+// do objeto "keys" de uma CrossSigningKey, ex: {"ed25519:PUBKEY": "PUBKEY"} -> "PUBKEY"
+func extractBareKeyID(keysMap json.RawMessage) (string, error) {
+	var parsed map[string]string
+	if err := json.Unmarshal(keysMap, &parsed); err != nil {
+		return "", err
+	}
+	for fullKeyID := range parsed {
+		if _, bare, found := strings.Cut(fullKeyID, ":"); found {
+			return bare, nil
+		}
+		return fullKeyID, nil
+	}
+	return "", fmt.Errorf("empty keys object")
+}
+
+// UploadSignaturesResult é o resultado de POST /_matrix/client/v3/keys/signatures/upload
+type UploadSignaturesResult struct {
+	Failures map[string]map[string]any // userID -> keyID -> erro
+}
+
+// UploadSignatures funde novas assinaturas nas chaves de dispositivo ou de cross-signing já
+// armazenadas localmente (assinaturas sobre usuários remotos não são suportadas por ora).
+// NOTE: não valida criptograficamente as assinaturas (mesma simplificação de UploadCrossSigningKeys)
+func (s *KeysService) UploadSignatures(ctx context.Context, requested map[string]map[string]json.RawMessage) UploadSignaturesResult {
+	result := UploadSignaturesResult{Failures: make(map[string]map[string]any)}
+
+	fail := func(userID, keyID, errcode, message string) {
+		if result.Failures[userID] == nil {
+			result.Failures[userID] = make(map[string]any)
+		}
+		result.Failures[userID][keyID] = map[string]string{"errcode": errcode, "error": message}
+	}
+
+	for userID, keys := range requested {
+		if util.ExtractDomainFromUserID(userID) != s.serverName {
+			for keyID := range keys {
+				fail(userID, keyID, "M_NOT_FOUND", "Cannot sign keys of remote users")
+			}
+			continue
+		}
+
+		for keyID, signedObj := range keys {
+			var parsed struct {
+				Signatures json.RawMessage `json:"signatures"`
+			}
+			if err := json.Unmarshal(signedObj, &parsed); err != nil || len(parsed.Signatures) == 0 {
+				fail(userID, keyID, "M_INVALID_SIGNATURE", "Missing or invalid signatures in signed object")
+				continue
+			}
+
+			found, err := s.keysStore.MergeDeviceSignatures(ctx, userID, keyID, parsed.Signatures)
+			if err != nil {
+				log.Printf("[ERROR] UploadSignatures (device user=%s key=%s): %v", userID, keyID, err)
+				fail(userID, keyID, "M_UNKNOWN", "Failed to store signature")
+				continue
+			}
+			if found {
+				continue
+			}
+
+			found, err = s.keysStore.MergeCrossSigningSignatures(ctx, userID, keyID, parsed.Signatures)
+			if err != nil {
+				log.Printf("[ERROR] UploadSignatures (cross-signing user=%s key=%s): %v", userID, keyID, err)
+				fail(userID, keyID, "M_UNKNOWN", "Failed to store signature")
+				continue
+			}
+			if !found {
+				fail(userID, keyID, "M_NOT_FOUND", "Unknown key")
+			}
+		}
+	}
+
+	return result
 }

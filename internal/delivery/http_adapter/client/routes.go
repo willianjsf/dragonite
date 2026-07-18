@@ -127,9 +127,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("PUT /_matrix/client/v3/directory/room/{roomAlias}", authMiddleware(http.HandlerFunc(h.setRoomAlias)))
 	mux.Handle("DELETE /_matrix/client/v3/directory/room/{roomAlias}", authMiddleware(http.HandlerFunc(h.deleteRoomAlias)))
 
-	// chaves de encriptação (mock)
-	mux.Handle("POST /_matrix/client/v3/keys/device_signing/upload", authMiddleware(http.HandlerFunc(h.uploadDeviceSigning)))
-	mux.Handle("POST /_matrix/client/v3/keys/signatures/upload", authMiddleware(http.HandlerFunc(h.uploadDeviceSigning)))
 }
 
 func (h *Handler) getVersions(w http.ResponseWriter, r *http.Request) {
@@ -408,11 +405,4 @@ func (h *Handler) deleteRoomAlias(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
-}
-
-func (h *Handler) uploadDeviceSigning(w http.ResponseWriter, r *http.Request) {
-	// Retorna 200 OK vazio para o Element achar que enviou as chaves com sucesso
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{}`))
 }

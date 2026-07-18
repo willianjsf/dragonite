@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/caio-bernardo/dragonite/internal/delivery/http_adapter/httputil"
+	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/usecase"
 )
@@ -64,20 +65,26 @@ func (h *Handler) uploadKeys(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, UploadKeysResponse{OneTimeKeyCounts: counts})
 }
 
-// queryKeys retorna as chaves de identidade dos dispositivos pedidos (locais ou federados)
+// queryKeys retorna as chaves de identidade (e, se aplicável, de cross-signing) dos dispositivos
+// pedidos (locais ou federados)
 // POST /_matrix/client/v3/keys/query
 func (h *Handler) queryKeys(w http.ResponseWriter, r *http.Request) {
+	requestingUserID, _ := r.Context().Value(types.UserIDKey).(string)
+
 	var req QueryKeysRequest
 	if err := httputil.ParseBody(r, &req); err != nil {
 		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "Request did not contain valid JSON")
 		return
 	}
 
-	result := h.keysService.QueryKeys(r.Context(), req.DeviceKeys)
+	result := h.keysService.QueryKeys(r.Context(), requestingUserID, req.DeviceKeys)
 
 	response := QueryKeysResponse{
-		DeviceKeys: make(map[string]map[string]DeviceKeysInfo),
-		Failures:   result.Failures,
+		DeviceKeys:      make(map[string]map[string]DeviceKeysInfo),
+		MasterKeys:      make(map[string]CrossSigningKeyInfo),
+		SelfSigningKeys: make(map[string]CrossSigningKeyInfo),
+		UserSigningKeys: make(map[string]CrossSigningKeyInfo),
+		Failures:        result.Failures,
 	}
 	for userID, devices := range result.DeviceKeys {
 		devMap := make(map[string]DeviceKeysInfo, len(devices))
@@ -93,8 +100,26 @@ func (h *Handler) queryKeys(w http.ResponseWriter, r *http.Request) {
 		}
 		response.DeviceKeys[userID] = devMap
 	}
+	for userID, k := range result.MasterKeys {
+		response.MasterKeys[userID] = toCrossSigningKeyInfo(userID, k)
+	}
+	for userID, k := range result.SelfSigningKeys {
+		response.SelfSigningKeys[userID] = toCrossSigningKeyInfo(userID, k)
+	}
+	for userID, k := range result.UserSigningKeys {
+		response.UserSigningKeys[userID] = toCrossSigningKeyInfo(userID, k)
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+func toCrossSigningKeyInfo(userID string, k domain.ChaveCrossSigning) CrossSigningKeyInfo {
+	return CrossSigningKeyInfo{
+		Keys:       k.Keys,
+		Signatures: k.Signatures,
+		Usage:      []string{k.Usage},
+		UserID:     userID,
+	}
 }
 
 // claimKeys reivindica one-time keys dos dispositivos pedidos (locais ou federados)

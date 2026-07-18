@@ -28,3 +28,12 @@ type ChaveFallback struct {
 	KeyData       json.RawMessage
 	Usada         bool
 }
+
+// ChaveCrossSigning representa uma chave de cross-signing (master, self_signing ou user_signing) de um usuário
+type ChaveCrossSigning struct {
+	UsuarioID  string
+	Usage      string          // "master", "self_signing" ou "user_signing"
+	KeyID      string          // chave pública crua (sem prefixo "ed25519:")
+	Keys       json.RawMessage // objeto {"ed25519:<pubkey>": "<pubkey>"}, igual à spec
+	Signatures json.RawMessage
+}

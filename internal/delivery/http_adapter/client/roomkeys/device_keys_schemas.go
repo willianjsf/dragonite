@@ -46,8 +46,11 @@ type QueryKeysRequest struct {
 
 // QueryKeysResponse é a resposta 200 de POST /_matrix/client/v3/keys/query
 type QueryKeysResponse struct {
-	DeviceKeys map[string]map[string]DeviceKeysInfo `json:"device_keys"`
-	Failures   map[string]any                       `json:"failures"`
+	DeviceKeys      map[string]map[string]DeviceKeysInfo `json:"device_keys"`
+	MasterKeys      map[string]CrossSigningKeyInfo       `json:"master_keys,omitempty"`
+	SelfSigningKeys map[string]CrossSigningKeyInfo       `json:"self_signing_keys,omitempty"`
+	UserSigningKeys map[string]CrossSigningKeyInfo       `json:"user_signing_keys,omitempty"`
+	Failures        map[string]any                       `json:"failures"`
 }
 
 // ClaimKeysRequest é o corpo de POST /_matrix/client/v3/keys/claim

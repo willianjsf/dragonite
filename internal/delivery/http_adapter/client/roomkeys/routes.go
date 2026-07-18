@@ -40,6 +40,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("POST /_matrix/client/v3/keys/query", authMiddleware(http.HandlerFunc(h.queryKeys)))
 	mux.Handle("POST /_matrix/client/v3/keys/claim", authMiddleware(http.HandlerFunc(h.claimKeys)))
 	mux.Handle("GET /_matrix/client/v3/keys/changes", authMiddleware(http.HandlerFunc(h.getKeyChanges)))
+
+	// cross-signing
+	mux.Handle("POST /_matrix/client/v3/keys/device_signing/upload", authMiddleware(http.HandlerFunc(h.uploadCrossSigningKeys)))
+	mux.Handle("POST /_matrix/client/v3/keys/signatures/upload", authMiddleware(http.HandlerFunc(h.uploadSignatures)))
 }
 
 // getLatestVersion retorna informações sobre a versão mais recente do backup de chaves
