@@ -81,6 +81,7 @@ func main() {
 	mediaService := usecase.NewMediaService(config.ServerName, minioStorage, storage, config.MaxUploadBytes, fedService)
 	presenceService := usecase.NewPresenceService(storage, storage)
 	backupService := usecase.NewBackupService(storage, storage)
+	keysService := usecase.NewKeysService(storage, storage, fedService, config.ServerName)
 
 	// cria servidor
 	server := http_adapter.NewServer(config.ServerPort, config.JWTToken,
@@ -91,6 +92,7 @@ func main() {
 		idempoCache,
 		presenceService,
 		backupService,
+		keysService,
 		util.FetchRemoteServerKey,
 	)
 

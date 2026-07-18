@@ -59,8 +59,10 @@ onde ela agregaria valor, para ajudar a priorizar depois.
 - [X] DELETE /\_matrix/client/v3/room_keys/keys
 - [X] POST /_matrix/client/v3/keys/device_signing/upload *(feito só mock)*
 - [X] POST /_matrix/client/v3/keys/signatures/upload *(feito só mock)*
-- [X] POST /_matrix/client/v3/keys/upload *(feito só mock)*
-- [X] POST /_matrix/client/v3/keys/query  *(feito só mock)*
+- [X] POST /_matrix/client/v3/keys/upload 
+- [X] POST /_matrix/client/v3/keys/query  
+- [x] POST /_matrix/client/v3/keys/claim
+- [x] GET /_matrix/client/v3/keys/changes
 
 ### Opcionais
 

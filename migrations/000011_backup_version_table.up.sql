@@ -20,3 +20,31 @@ CREATE TABLE IF NOT EXISTS ChaveBackup (
     session_data JSONB NOT NULL,
     PRIMARY KEY (id_versao, id_canal, id_sessao)
 );
+
+CREATE TABLE IF NOT EXISTS Chave_Dispositivo (
+    fk_id_dispositivo UUID PRIMARY KEY REFERENCES Dispositivo(id) ON DELETE CASCADE,
+    algorithms TEXT[] NOT NULL,
+    device_keys JSONB NOT NULL,
+    signatures JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS Chave_Uso_Unico (
+    id BIGSERIAL PRIMARY KEY,
+    fk_id_dispositivo UUID NOT NULL REFERENCES Dispositivo(id) ON DELETE CASCADE,
+    key_id VARCHAR(255) NOT NULL,
+    algorithm VARCHAR(255) NOT NULL,
+    key_data JSONB NOT NULL,
+    UNIQUE (fk_id_dispositivo, key_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chave_uso_unico_dispositivo_algoritmo ON Chave_Uso_Unico (fk_id_dispositivo, algorithm);
+
+CREATE TABLE IF NOT EXISTS Chave_Fallback (
+    fk_id_dispositivo UUID NOT NULL REFERENCES Dispositivo(id) ON DELETE CASCADE,
+    algorithm VARCHAR(255) NOT NULL,
+    key_id VARCHAR(255) NOT NULL,
+    key_data JSONB NOT NULL,
+    usada BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (fk_id_dispositivo, algorithm)
+);

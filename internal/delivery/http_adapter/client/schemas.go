@@ -105,3 +105,4 @@ type QueryKeysRequest struct {
 	Timeout    int                 `json:"timeout,omitempty"`
 	Token      string              `json:"token,omitempty"`
 }
+

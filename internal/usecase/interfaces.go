@@ -163,3 +163,22 @@ type BackupStorage interface {
 	// DeleteRoomKeys apaga todas as chaves da versão e retorna a contagem (0) e o novo etag
 	DeleteRoomKeys(ctx context.Context, versionID int64) (count int64, etag string, err error)
 }
+
+// KeysStorage define as operações de persistência das chaves de identidade E2EE (device keys),
+// one-time keys e fallback keys dos dispositivos
+type KeysStorage interface {
+	UpsertDeviceKeys(ctx context.Context, keys domain.ChavesDispositivo) error
+	// GetDeviceKeys retorna as chaves dos dispositivos indicados de um usuário.
+	// Se deviceIDs for vazio, retorna as chaves de TODOS os dispositivos do usuário.
+	GetDeviceKeys(ctx context.Context, userID string, deviceIDs []string) ([]domain.ChavesDispositivo, error)
+
+	UpsertOneTimeKeys(ctx context.Context, deviceID string, keys []domain.ChaveUsoUnico) error
+	// ClaimOneTimeKey reivindica (e apaga) UMA one-time key. 
+	ClaimOneTimeKey(ctx context.Context, deviceID, algorithm string) (*domain.ChaveUsoUnico, error)
+	// CountOneTimeKeys conta as one-time keys remanescentes, agrupadas por algoritmo
+	CountOneTimeKeys(ctx context.Context, deviceID string) (map[string]int, error)
+
+	UpsertFallbackKey(ctx context.Context, key domain.ChaveFallback) error
+	// ClaimFallbackKey retorna a fallback key do dispositivo pro algoritmo e a marca como usada
+	ClaimFallbackKey(ctx context.Context, deviceID, algorithm string) (*domain.ChaveFallback, error)
+}

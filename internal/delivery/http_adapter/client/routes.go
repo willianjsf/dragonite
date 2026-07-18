@@ -37,6 +37,7 @@ type Handler struct {
 	idempotencyCache infrastructure.IdempotencyCache
 	presenceService  *usecase.PresenceService
 	backupService    *usecase.BackupService
+	keysService      *usecase.KeysService
 	serverName       string
 }
 
@@ -55,6 +56,7 @@ func NewHandler(
 	idempotencyCache infrastructure.IdempotencyCache,
 	presenceService *usecase.PresenceService,
 	backupService *usecase.BackupService,
+	keysService *usecase.KeysService,
 ) *Handler {
 	return &Handler{
 		serverName:       serverName,
@@ -71,6 +73,7 @@ func NewHandler(
 		idempotencyCache: idempotencyCache,
 		presenceService:  presenceService,
 		backupService:    backupService,
+		keysService:      keysService,
 	}
 }
 
@@ -101,8 +104,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	presenceHandler := presence.NewHandler(h.presenceService)
 	presenceHandler.RegisterRoutes(mux, authMiddleware)
 
-	// backup de chaves E2EE (server-side key backup)
-	roomKeysHandler := roomkeys.NewHandler(h.backupService)
+	// E2EE: backup de chaves + gerenciamento de chaves de dispositivo
+	roomKeysHandler := roomkeys.NewHandler(h.backupService, h.keysService)
 	roomKeysHandler.RegisterRoutes(mux, authMiddleware)
 
 	// sincronização de dados
@@ -125,8 +128,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 	mux.Handle("DELETE /_matrix/client/v3/directory/room/{roomAlias}", authMiddleware(http.HandlerFunc(h.deleteRoomAlias)))
 
 	// chaves de encriptação (mock)
-	mux.Handle("POST /_matrix/client/v3/keys/upload", authMiddleware(http.HandlerFunc(h.uploadKeys)))
-	mux.Handle("POST /_matrix/client/v3/keys/query", authMiddleware(http.HandlerFunc(h.queryKeys)))
 	mux.Handle("POST /_matrix/client/v3/keys/device_signing/upload", authMiddleware(http.HandlerFunc(h.uploadDeviceSigning)))
 	mux.Handle("POST /_matrix/client/v3/keys/signatures/upload", authMiddleware(http.HandlerFunc(h.uploadDeviceSigning)))
 }
@@ -407,43 +408,6 @@ func (h *Handler) deleteRoomAlias(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
-}
-
-// uploadKeys lida com o mock de upload de chaves (E2EE) do dispositivo
-// POST /_matrix/client/v3/keys/upload
-func (h *Handler) uploadKeys(w http.ResponseWriter, r *http.Request) {
-	// A especificação exige retornar a contagem de chaves de uso único (One-Time Keys) remanescentes.
-	// Fingir que recebemos e salvamos as chaves é o suficiente para parar o spam do cliente.
-	response := map[string]any{
-		"one_time_key_counts": map[string]int{
-			"signed_curve25519": 50, // Dizemos ao Element que ele tem 50 OTKs seguras salvas
-		},
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, response)
-}
-
-// queryKeys lida com o mock dinâmico de busca por chaves
-// POST /_matrix/client/v3/keys/query
-func (h *Handler) queryKeys(w http.ResponseWriter, r *http.Request) {
-	var req QueryKeysRequest
-
-	// Tentamos ler os usuários que o Element quer consultar.
-	// Se falhar ou estiver vazio, ignoramos
-	_ = httputil.ParseBody(r, &req)
-
-	deviceKeysResponse := make(map[string]map[string]any)
-	for userID := range req.DeviceKeys {
-		// Sem dispositivos criptografados
-		deviceKeysResponse[userID] = map[string]any{}
-	}
-
-	response := map[string]any{
-		"device_keys": deviceKeysResponse,
-		"failures":    map[string]any{},
-	}
-
-	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) uploadDeviceSigning(w http.ResponseWriter, r *http.Request) {

@@ -36,6 +36,7 @@ type Server struct {
 	idempotencyCache        infrastructure.IdempotencyCache
 	presenceService         *usecase.PresenceService
 	backupService           *usecase.BackupService
+	keysService             *usecase.KeysService
 	keyFetcher              federation.KeyFetcherFn
 }
 
@@ -58,6 +59,7 @@ func NewServer(port int,
 	idempotencyCache infrastructure.IdempotencyCache,
 	presenceService *usecase.PresenceService,
 	backupService *usecase.BackupService,
+	keysService *usecase.KeysService,
 	keyFetcher federation.KeyFetcherFn,
 ) *http.Server {
 
@@ -81,6 +83,7 @@ func NewServer(port int,
 		idempotencyCache:        idempotencyCache,
 		presenceService:         presenceService,
 		backupService:           backupService,
+		keysService:             keysService,
 		keyFetcher:              util.FetchRemoteServerKey,
 	}
 
@@ -115,6 +118,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		s.idempotencyCache,
 		s.presenceService,
 		s.backupService,
+		s.keysService,
 	)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
 

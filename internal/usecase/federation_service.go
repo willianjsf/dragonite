@@ -959,6 +959,122 @@ func (f *FederationService) QueryDirectory(ctx context.Context, remoteServer, ro
 	return result.RoomID, result.Servers, nil
 }
 
+// OutboundKeysQueryRequest é o payload de POST /_matrix/federation/v1/user/keys/query
+type OutboundKeysQueryRequest struct {
+	DeviceKeys map[string][]string `json:"device_keys"`
+}
+
+// OutboundKeysQueryResponse é a resposta de POST /_matrix/federation/v1/user/keys/query
+type OutboundKeysQueryResponse struct {
+	DeviceKeys map[string]map[string]json.RawMessage `json:"device_keys"`
+}
+
+// QueryKeysCall consulta as chaves de identidade de dispositivos de usuários hospedados em remoteServer
+func (f *FederationService) QueryKeysCall(ctx context.Context, remoteServer string, deviceKeys map[string][]string) (map[string]map[string]json.RawMessage, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return nil, err
+	}
+
+	uri := "/_matrix/federation/v1/user/keys/query"
+	payload := OutboundKeysQueryRequest{DeviceKeys: deviceKeys}
+
+	payloadBytes, err := util.CanonicalJSON(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to canonicalize keys/query payload: %w", err)
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "POST", uri, remoteServer, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign keys/query request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to contact remote server %s: %w", remoteServer, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("remote server rejected keys/query: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result OutboundKeysQueryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode keys/query response: %w", err)
+	}
+
+	return result.DeviceKeys, nil
+}
+
+// OutboundKeysClaimRequest é o payload de POST /_matrix/federation/v1/user/keys/claim
+type OutboundKeysClaimRequest struct {
+	OneTimeKeys map[string]map[string]string `json:"one_time_keys"`
+}
+
+// OutboundKeysClaimResponse é a resposta de POST /_matrix/federation/v1/user/keys/claim
+type OutboundKeysClaimResponse struct {
+	OneTimeKeys map[string]map[string]map[string]json.RawMessage `json:"one_time_keys"`
+}
+
+// ClaimKeysCall reivindica one-time keys de dispositivos hospedados em remoteServer
+func (f *FederationService) ClaimKeysCall(ctx context.Context, remoteServer string, oneTimeKeys map[string]map[string]string) (map[string]map[string]map[string]json.RawMessage, error) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		return nil, err
+	}
+
+	uri := "/_matrix/federation/v1/user/keys/claim"
+	payload := OutboundKeysClaimRequest{OneTimeKeys: oneTimeKeys}
+
+	payloadBytes, err := util.CanonicalJSON(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to canonicalize keys/claim payload: %w", err)
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "POST", uri, remoteServer, payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign keys/claim request: %w", err)
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to contact remote server %s: %w", remoteServer, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("remote server rejected keys/claim: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var result OutboundKeysClaimResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode keys/claim response: %w", err)
+	}
+
+	return result.OneTimeKeys, nil
+}
+
 // resolveStateAtIngestion calculates the consensus state map across all prev_events of an incoming PDU.
 func (f *FederationService) resolveStateAtIngestion(ctx context.Context, roomID string, prevEvents []string) (domain.StateMap, error) {
 	if len(prevEvents) == 0 {
