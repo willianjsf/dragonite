@@ -27,6 +27,7 @@ type VerifyKey struct {
 }
 
 type TransactionRequest struct {
+	Edus           []EduEvent      `json:"edus,omitempty"`
 	Origin         string          `json:"origin"`
 	OriginServerTS string          `json:"origin_server_ts"`
 	PDUs           []domain.Evento `json:"pdus"`
@@ -155,7 +156,7 @@ type QueryDirectoryResponse struct {
 	Servers []string `json:"servers"`
 }
 
-// user/keys/query 
+// user/keys/query
 
 type UserKeysQueryRequest struct {
 	DeviceKeys map[string][]string `json:"device_keys"`
@@ -197,4 +198,10 @@ type UserKeysClaimRequest struct {
 
 type UserKeysClaimResponse struct {
 	OneTimeKeys map[string]map[string]map[string]json.RawMessage `json:"one_time_keys"`
+}
+
+// EduEvent é uma EDU (Ephemeral Data Unit) genérica dentro de uma transação de federação
+type EduEvent struct {
+	Content json.RawMessage `json:"content"`
+	EduType string          `json:"edu_type"`
 }

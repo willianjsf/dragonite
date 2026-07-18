@@ -174,7 +174,7 @@ type KeysStorage interface {
 	GetDeviceKeys(ctx context.Context, userID string, deviceIDs []string) ([]domain.ChavesDispositivo, error)
 
 	UpsertOneTimeKeys(ctx context.Context, deviceID string, keys []domain.ChaveUsoUnico) error
-	// ClaimOneTimeKey reivindica (e apaga) UMA one-time key. 
+	// ClaimOneTimeKey reivindica (e apaga) UMA one-time key.
 	ClaimOneTimeKey(ctx context.Context, deviceID, algorithm string) (*domain.ChaveUsoUnico, error)
 	// CountOneTimeKeys conta as one-time keys remanescentes, agrupadas por algoritmo
 	CountOneTimeKeys(ctx context.Context, deviceID string) (map[string]int, error)
@@ -193,4 +193,14 @@ type KeysStorage interface {
 	// MergeCrossSigningSignatures funde novas assinaturas nas já armazenadas de uma chave de cross-signing,
 	// identificada pela chave pública crua. false se a chave não existir.
 	MergeCrossSigningSignatures(ctx context.Context, userID, publicKeyID string, newSignatures json.RawMessage) (bool, error)
+}
+
+// ToDeviceStorage define a persistência de mensagens send-to-device pendentes de entrega
+type ToDeviceStorage interface {
+	// InsertToDeviceMessages insere mensagens pendentes em lote (uma por dispositivo destinatário)
+	InsertToDeviceMessages(ctx context.Context, messages []domain.ToDeviceMessage) error
+	// GetToDeviceMessagesSince retorna até `limit` mensagens pendentes de um dispositivo com id > since, em ordem de chegada
+	GetToDeviceMessagesSince(ctx context.Context, userID, deviceID string, since int64, limit int) ([]domain.ToDeviceMessage, error)
+	// DeleteToDeviceMessagesUpTo apaga as mensagens já entregues (id <= upTo) de um dispositivo
+	DeleteToDeviceMessagesUpTo(ctx context.Context, userID, deviceID string, upTo int64) error
 }

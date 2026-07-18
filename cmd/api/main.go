@@ -75,13 +75,14 @@ func main() {
 	roomAdminService := usecase.NewRoomAdminService(config.ServerName, config.KeyID, config.PrivateKey, storage, fedService, storage, storage, storage)
 	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, fedService, authRuleResolver, storage, config.ServerName, config.KeyID, config.PrivateKey)
 	roomMembershipService := usecase.NewRoomMembershipService(storage, storage, storage, authRuleResolver, fedService, stateResolver)
-	syncService := usecase.NewSyncService(storage, storage, storage, notifier)
+	syncService := usecase.NewSyncService(storage, storage, storage, notifier, storage, storage)
 	systemService := usecase.NewSystemService(config.ServerName, config.Version, config.PublicKey, config.PrivateKey, config.KeyID, storage)
 	usuarioService := usecase.NewUsuarioService(storage, storage, storage)
 	mediaService := usecase.NewMediaService(config.ServerName, minioStorage, storage, config.MaxUploadBytes, fedService)
 	presenceService := usecase.NewPresenceService(storage, storage)
 	backupService := usecase.NewBackupService(storage, storage)
 	keysService := usecase.NewKeysService(storage, storage, fedService, config.ServerName)
+	toDeviceService := usecase.NewToDeviceService(storage, storage, fedService, config.ServerName)
 
 	// cria servidor
 	server := http_adapter.NewServer(config.ServerPort, config.JWTToken,
@@ -93,6 +94,7 @@ func main() {
 		presenceService,
 		backupService,
 		keysService,
+		toDeviceService,
 		util.FetchRemoteServerKey,
 	)
 

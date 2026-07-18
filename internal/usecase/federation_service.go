@@ -1163,3 +1163,79 @@ func (f *FederationService) resolveStateAtIngestion(ctx context.Context, roomID 
 
 	return resolvedState, nil
 }
+
+// DirectToDeviceEduContent é o conteúdo da EDU m.direct_to_device (S2S)
+type DirectToDeviceEduContent struct {
+	MessageID string                                `json:"message_id"`
+	Messages  map[string]map[string]json.RawMessage `json:"messages"`
+	Sender    string                                `json:"sender"`
+	Type      string                                `json:"type"`
+}
+
+// SendToDeviceCall envia mensagens send-to-device pra usuários hospedados em remoteServer via
+// uma EDU m.direct_to_device dentro de uma transação de federação. Best-effort: erros só são logados
+// (diferente do pipeline de PDUs, não há fila de retry aqui ainda).
+func (f *FederationService) SendToDeviceCall(ctx context.Context, remoteServer, sender, eventType string, messages map[string]map[string]json.RawMessage) {
+	targetHost, err := util.ResolveServerName(remoteServer)
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to resolve %s: %v", remoteServer, err)
+		return
+	}
+
+	txnID := fmt.Sprintf("%d", time.Now().UnixMilli())
+	uri := fmt.Sprintf("/_matrix/federation/v1/send/%s", txnID)
+
+	eduContentBytes, err := json.Marshal(DirectToDeviceEduContent{
+		MessageID: txnID,
+		Messages:  messages,
+		Sender:    sender,
+		Type:      eventType,
+	})
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to marshal EDU content: %v", err)
+		return
+	}
+
+	txnPayload := map[string]any{
+		"origin":           f.serverName,
+		"origin_server_ts": time.Now().UnixMilli(),
+		"pdus":             []domain.Evento{},
+		"edus": []map[string]any{
+			{"edu_type": "m.direct_to_device", "content": json.RawMessage(eduContentBytes)},
+		},
+	}
+
+	txnBytes, err := util.CanonicalJSON(txnPayload)
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to canonicalize payload: %v", err)
+		return
+	}
+
+	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "PUT", uri, remoteServer, txnPayload)
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to sign request: %v", err)
+		return
+	}
+
+	reqURL := fmt.Sprintf("https://%s%s", targetHost, uri)
+	req, err := http.NewRequestWithContext(ctx, "PUT", reqURL, bytes.NewBuffer(txnBytes))
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to build request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", authHeader)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[Federation] SendToDeviceCall: failed to contact %s: %v", remoteServer, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[Federation] SendToDeviceCall: remote server rejected transaction: %d - %s", resp.StatusCode, string(body))
+	}
+}

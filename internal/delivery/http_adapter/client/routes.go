@@ -38,6 +38,7 @@ type Handler struct {
 	presenceService  *usecase.PresenceService
 	backupService    *usecase.BackupService
 	keysService      *usecase.KeysService
+	toDeviceService  *usecase.ToDeviceService
 	serverName       string
 }
 
@@ -57,6 +58,7 @@ func NewHandler(
 	presenceService *usecase.PresenceService,
 	backupService *usecase.BackupService,
 	keysService *usecase.KeysService,
+	toDeviceService *usecase.ToDeviceService,
 ) *Handler {
 	return &Handler{
 		serverName:       serverName,
@@ -74,6 +76,7 @@ func NewHandler(
 		presenceService:  presenceService,
 		backupService:    backupService,
 		keysService:      keysService,
+		toDeviceService:  toDeviceService,
 	}
 }
 
@@ -110,6 +113,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, authMiddleware httputil.Mid
 
 	// sincronização de dados
 	mux.Handle("GET /_matrix/client/v3/sync", authMiddleware(http.HandlerFunc(h.syncClient))) // WARN: esse é o dificil
+	mux.Handle("PUT /_matrix/client/v3/sendToDevice/{eventType}/{txnId}", authMiddleware(http.HandlerFunc(h.sendToDevice)))
 	// busca de usuários
 	mux.Handle("POST /_matrix/client/v3/user_directory/search", authMiddleware(http.HandlerFunc(h.searchUsers)))
 	// salas em que o usuário está atualmente
@@ -290,6 +294,7 @@ func (h *Handler) getJoinedRooms(w http.ResponseWriter, r *http.Request) {
 // Pode ser usado para receber um log inicial após o login e sincronização incremental de alterações.
 func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(types.UserIDKey).(string)
+	deviceID, _ := r.Context().Value(types.DeviceIDKey).(string)
 
 	// Constroi o corpo da requisição
 	var req SyncClientRequest
@@ -311,7 +316,7 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Timeout = time.Duration(timeout) * time.Millisecond
 
-	response, err := h.syncService.SyncClient(r.Context(), userID, req.Since, req.Timeout)
+	response, err := h.syncService.SyncClient(r.Context(), userID, deviceID, req.Since, req.Timeout)
 	if err != nil {
 		if r.Context().Err() == context.Canceled {
 			w.WriteHeader(499)
@@ -323,6 +328,50 @@ func (h *Handler) syncClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
+}
+
+// sendToDevice envia mensagens de sinalização diretamente a dispositivos específicos, sem
+// persistir no DAG da sala (majoritariamente usado pra troca de chaves E2EE)
+// PUT /_matrix/client/v3/sendToDevice/{eventType}/{txnId}
+func (h *Handler) sendToDevice(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(types.UserIDKey).(string)
+	eventType := r.PathValue("eventType")
+	txnID := r.PathValue("txnId")
+
+	if eventType == "" || txnID == "" {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_MISSING_PARAM, "Missing eventType or txnId")
+		return
+	}
+
+	accessToken := r.Header.Get("Authorization")
+	const endpoint = "sendToDevice"
+	if _, found := h.idempotencyCache.Get(r.Context(), accessToken, endpoint, txnID); found {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{})
+		return
+	}
+
+	var req SendToDeviceRequest
+	if err := httputil.ParseBody(r, &req); err != nil {
+		httputil.WriteMatrixError(w, http.StatusBadRequest, httputil.M_NOT_JSON, "Request did not contain valid JSON")
+		return
+	}
+
+	err := h.toDeviceService.Send(r.Context(), usecase.SendParams{
+		Sender:    userID,
+		EventType: eventType,
+		Messages:  req.Messages,
+	})
+	if err != nil {
+		log.Printf("[ERROR] PUT /_matrix/client/v3/sendToDevice/%s/%s (user=%s): %v", eventType, txnID, userID, err)
+		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, "Failed to send messages")
+		return
+	}
+
+	if err := h.idempotencyCache.Set(r.Context(), accessToken, endpoint, txnID, "ok", 24*time.Hour); err != nil {
+		log.Printf("[WARN] PUT /_matrix/client/v3/sendToDevice/%s/%s: failed to set idempotency cache: %v", eventType, txnID, err)
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{})
 }
 
 // resolveRoomAlias resolve um alias de sala pra room_id + servidores conhecidos

@@ -90,4 +90,3 @@ func WriteMatrixErrorSoftLogout(w http.ResponseWriter, status int, errcode Matri
 		SoftLogout: true,
 	})
 }
-

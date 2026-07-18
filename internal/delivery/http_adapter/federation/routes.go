@@ -37,12 +37,13 @@ type Handler struct {
 	dirService             *usecase.DirectoryService
 	mediaService           *usecase.MediaService
 	keysService            *usecase.KeysService
+	toDeviceService        *usecase.ToDeviceService
 	keyFetcher             KeyFetcherFn
 	serverName             string
 	keyCache               sync.Map // map["origin/keyID"]ed25519.PublicKey
 }
 
-func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService, profileService *usecase.ProfileService, dirService *usecase.DirectoryService, mediaService *usecase.MediaService, keysService *usecase.KeysService, keyFetcher KeyFetcherFn, serverName string) *Handler {
+func NewHandler(sysService *usecase.SystemService, fedService *usecase.FederationService, roomInteractionService *usecase.RoomInteractionService, profileService *usecase.ProfileService, dirService *usecase.DirectoryService, mediaService *usecase.MediaService, keysService *usecase.KeysService, toDeviceService *usecase.ToDeviceService, keyFetcher KeyFetcherFn, serverName string) *Handler {
 	return &Handler{
 		sysService:             sysService,
 		fedService:             fedService,
@@ -51,6 +52,7 @@ func NewHandler(sysService *usecase.SystemService, fedService *usecase.Federatio
 		dirService:             dirService,
 		mediaService:           mediaService,
 		keysService:            keysService,
+		toDeviceService:        toDeviceService,
 		keyFetcher:             keyFetcher,
 		serverName:             serverName,
 	}
@@ -417,6 +419,21 @@ func (h *Handler) putSendTxn(w http.ResponseWriter, r *http.Request) {
 			results[pdu.ID] = map[string]string{"error": err.Error()}
 		} else {
 			results[pdu.ID] = map[string]string{}
+		}
+	}
+
+	// 3. Processamos EDUs — por ora, só m.direct_to_device (send-to-device)
+	for _, edu := range req.Edus {
+		if edu.EduType != "m.direct_to_device" {
+			continue
+		}
+		var content usecase.DirectToDeviceEduContent
+		if err := json.Unmarshal(edu.Content, &content); err != nil {
+			log.Printf("[ERROR] PUT /_matrix/federation/v1/send/%s: invalid m.direct_to_device content: %v", txnID, err)
+			continue
+		}
+		if err := h.toDeviceService.DeliverFromFederation(r.Context(), content.Sender, content.Type, content.Messages); err != nil {
+			log.Printf("[ERROR] PUT /_matrix/federation/v1/send/%s: failed to deliver to-device messages: %v", txnID, err)
 		}
 	}
 

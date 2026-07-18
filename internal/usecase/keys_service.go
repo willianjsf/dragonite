@@ -99,9 +99,9 @@ func (s *KeysService) UploadKeys(ctx context.Context, params UploadKeysParams) (
 // QueryKeysResult é o resultado agregado (local + federado) de uma consulta de chaves
 type QueryKeysResult struct {
 	DeviceKeys      map[string]map[string]domain.ChavesDispositivo // userID -> deviceID -> chaves
-	MasterKeys      map[string]domain.ChaveCrossSigning             // userID -> master key
-	SelfSigningKeys map[string]domain.ChaveCrossSigning             // userID -> self-signing key
-	UserSigningKeys map[string]domain.ChaveCrossSigning             // apenas para requestingUserID, se presente na query
+	MasterKeys      map[string]domain.ChaveCrossSigning            // userID -> master key
+	SelfSigningKeys map[string]domain.ChaveCrossSigning            // userID -> self-signing key
+	UserSigningKeys map[string]domain.ChaveCrossSigning            // apenas para requestingUserID, se presente na query
 	Failures        map[string]any
 }
 

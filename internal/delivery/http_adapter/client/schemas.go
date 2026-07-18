@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/caio-bernardo/dragonite/internal/domain"
@@ -106,3 +107,7 @@ type QueryKeysRequest struct {
 	Token      string              `json:"token,omitempty"`
 }
 
+// SendToDeviceRequest é o corpo de PUT /_matrix/client/v3/sendToDevice/{eventType}/{txnId}
+type SendToDeviceRequest struct {
+	Messages map[string]map[string]json.RawMessage `json:"messages"`
+}

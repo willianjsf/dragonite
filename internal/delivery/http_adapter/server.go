@@ -37,6 +37,7 @@ type Server struct {
 	presenceService         *usecase.PresenceService
 	backupService           *usecase.BackupService
 	keysService             *usecase.KeysService
+	toDeviceService         *usecase.ToDeviceService
 	keyFetcher              federation.KeyFetcherFn
 }
 
@@ -60,6 +61,7 @@ func NewServer(port int,
 	presenceService *usecase.PresenceService,
 	backupService *usecase.BackupService,
 	keysService *usecase.KeysService,
+	toDeviceService *usecase.ToDeviceService,
 	keyFetcher federation.KeyFetcherFn,
 ) *http.Server {
 
@@ -84,6 +86,7 @@ func NewServer(port int,
 		presenceService:         presenceService,
 		backupService:           backupService,
 		keysService:             keysService,
+		toDeviceService:         toDeviceService,
 		keyFetcher:              util.FetchRemoteServerKey,
 	}
 
@@ -119,10 +122,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 		s.presenceService,
 		s.backupService,
 		s.keysService,
+		s.toDeviceService,
 	)
 	clientHandler.RegisterRoutes(mux, s.TokenBearerMiddleware)
 
-	federationHandler := federation.NewHandler(s.systemService, s.fedService, s.roomInteractionsService, s.profileService, s.dirService, s.mediaService, s.keysService, s.keyFetcher, s.serverName)
+	federationHandler := federation.NewHandler(s.systemService, s.fedService, s.roomInteractionsService, s.profileService, s.dirService, s.mediaService, s.keysService, s.toDeviceService, s.keyFetcher, s.serverName)
 	federationHandler.RegisterRoutes(mux)
 
 	// Registra rotas
