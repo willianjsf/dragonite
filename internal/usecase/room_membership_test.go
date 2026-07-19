@@ -34,7 +34,7 @@ func TestInviteUser_Success(t *testing.T) {
 	evento := newRoomsvcFakeEventoStorage()
 	svc := newTestRoomMembershipService(t, canal, evento)
 
-	if err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "Welcome to the team!"); err != nil {
+	if err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "Welcome to the team!", false); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
@@ -76,7 +76,7 @@ func TestInviteUser_InviterNotInRoom(t *testing.T) {
 	evento := newRoomsvcFakeEventoStorage()
 	svc := newTestRoomMembershipService(t, canal, evento)
 
-	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "")
+	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false)
 	if !errors.Is(err, types.ErrForbidden) {
 		t.Errorf("expected types.ErrForbidden, got %v", err)
 	}
@@ -94,7 +94,7 @@ func TestInviteUser_InviteeBanned(t *testing.T) {
 	evento := newRoomsvcFakeEventoStorage()
 	svc := newTestRoomMembershipService(t, canal, evento)
 
-	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "")
+	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false)
 	if !errors.Is(err, types.ErrForbidden) {
 		t.Errorf("expected types.ErrForbidden, got %v", err)
 	}
@@ -109,7 +109,7 @@ func TestInviteUser_InviteeAlreadyJoined(t *testing.T) {
 	evento := newRoomsvcFakeEventoStorage()
 	svc := newTestRoomMembershipService(t, canal, evento)
 
-	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "")
+	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false)
 	if !errors.Is(err, types.ErrForbidden) {
 		t.Errorf("expected types.ErrForbidden, got %v", err)
 	}
@@ -130,7 +130,7 @@ func TestInviteUser_InsufficientPowerLevel(t *testing.T) {
 
 	svc := newTestRoomMembershipService(t, canal, evento)
 
-	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "")
+	err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false)
 	if !errors.Is(err, types.ErrForbidden) {
 		t.Errorf("expected types.ErrForbidden, got %v", err)
 	}
@@ -154,7 +154,7 @@ func TestInviteUser_SufficientPowerLevel(t *testing.T) {
 
 	svc := newTestRoomMembershipService(t, canal, evento)
 
-	if err := svc.InviteUser(context.Background(), roomID, inviter, invitee, ""); err != nil {
+	if err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 }
@@ -168,7 +168,7 @@ func TestInviteUser_NoPowerLevelsDefined(t *testing.T) {
 	evento := newRoomsvcFakeEventoStorage()
 	svc := newTestRoomMembershipService(t, canal, evento)
 
-	if err := svc.InviteUser(context.Background(), roomID, inviter, invitee, ""); err != nil {
+	if err := svc.InviteUser(context.Background(), roomID, inviter, invitee, "", false); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 }

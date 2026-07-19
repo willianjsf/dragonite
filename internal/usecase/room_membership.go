@@ -42,14 +42,14 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 
 	var displayName, avatarURL string
 
-    if profile, err := s.usuarioRepo.GetProfileByID(ctx, userID); err == nil && profile != nil {
-        if profile.DisplayName != nil {
-            displayName = *profile.DisplayName
-        }
-        if profile.AvatarURL != nil {
-            avatarURL = *profile.AvatarURL
-        }
-    }
+	if profile, err := s.usuarioRepo.GetProfileByID(ctx, userID); err == nil && profile != nil {
+		if profile.DisplayName != nil {
+			displayName = *profile.DisplayName
+		}
+		if profile.AvatarURL != nil {
+			avatarURL = *profile.AvatarURL
+		}
+	}
 
 	// 2. Build the Leave Event
 	leaveEvent := buildLeaveEvent(roomID, userID, displayName, avatarURL)
@@ -138,17 +138,16 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 	}
 
 	// --- NOVA BUSCA: Pegar perfil antes de construir o evento ---
-    var displayName, avatarURL string
+	var displayName, avatarURL string
 
-    if profile, err := s.usuarioRepo.GetProfileByID(ctx, userID); err == nil && profile != nil {
-        if profile.DisplayName != nil {
-            displayName = *profile.DisplayName
-        }
-        if profile.AvatarURL != nil {
-            avatarURL = *profile.AvatarURL
-        }
-    }
-
+	if profile, err := s.usuarioRepo.GetProfileByID(ctx, userID); err == nil && profile != nil {
+		if profile.DisplayName != nil {
+			displayName = *profile.DisplayName
+		}
+		if profile.AvatarURL != nil {
+			avatarURL = *profile.AvatarURL
+		}
+	}
 
 	// 3. Build the Join Event
 
@@ -319,6 +318,20 @@ func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, room
 			if err := s.canalRepo.UpsertCurrentState(txCtx, roomID, tuple.EventType, tuple.StateKey, winningID); err != nil {
 				return fmt.Errorf("failed to upsert resolved state %s|%s: %w", tuple.EventType, tuple.StateKey, err)
 			}
+
+			// If the resolved state event is a room member, sync the membership table!
+			if tuple.EventType == "m.room.member" {
+				if ev, exists := eventsMap[winningID]; exists && ev.StateKey != nil {
+					var content struct {
+						Membership string `json:"membership"`
+					}
+					if err := json.Unmarshal(ev.Content, &content); err == nil && content.Membership != "" {
+						if err := s.canalRepo.UpsertMembership(txCtx, roomID, *ev.StateKey, content.Membership, winningID); err != nil {
+							return fmt.Errorf("failed to upsert resolved membership for %s: %w", *ev.StateKey, err)
+						}
+					}
+				}
+			}
 		}
 
 		// G. Update local DAG forward extremities and user membership status
@@ -338,7 +351,7 @@ func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, room
 // InviteUser convida um usuário (local ou remoto) a participar da sala, criando um evento
 // m.room.member com membership "invite". Para convidados remotos, o evento é assinado
 // localmente e enviado ao homeserver do convidado via
-func (s *RoomMembershipService) InviteUser(ctx context.Context, roomID, inviterID, inviteeID, reason string) error {
+func (s *RoomMembershipService) InviteUser(ctx context.Context, roomID, inviterID, inviteeID, reason string, isDirect bool) error {
 	// 1. O inviter precisa estar atualmente na sala
 	inviterStatus, err := s.canalRepo.GetUserMembership(ctx, roomID, inviterID)
 	if err != nil {
@@ -371,18 +384,22 @@ func (s *RoomMembershipService) InviteUser(ctx context.Context, roomID, inviterI
 		content["reason"] = reason
 	}
 
+	if isDirect {
+		content["is_direct"] = true
+	}
+
 	// --- NOVA BUSCA: Injetar Perfil no Convite ---
-    if profile, err := s.usuarioRepo.GetProfileByID(ctx, inviteeID); err == nil && profile != nil {
-        // Verifique como os campos estão escritos na sua struct domain.Profile
-        if profile.DisplayName != nil {
-            content["displayname"] = *profile.DisplayName
-        }
-        if profile.AvatarURL != nil { // Pode ser AvatarUrl dependendo de como você definiu
-            content["avatar_url"] = *profile.AvatarURL
-        }
-    }
-    // ---------------------------------------------
-    //
+	if profile, err := s.usuarioRepo.GetProfileByID(ctx, inviteeID); err == nil && profile != nil {
+		// Verifique como os campos estão escritos na sua struct domain.Profile
+		if profile.DisplayName != nil {
+			content["displayname"] = *profile.DisplayName
+		}
+		if profile.AvatarURL != nil { // Pode ser AvatarUrl dependendo de como você definiu
+			content["avatar_url"] = *profile.AvatarURL
+		}
+	}
+	// ---------------------------------------------
+	//
 	inviteEvent := newBaseEvent(roomID, inviterID, string(types.Member), &inviteeID, content)
 
 	// 5. Resolve dependências do DAG
