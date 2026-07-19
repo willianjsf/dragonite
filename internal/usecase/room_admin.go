@@ -34,25 +34,27 @@ type RoomAdminService struct {
 	keyID      string
 	privateKey ed25519.PrivateKey
 
-	uow          WorkUnit
-	fedService   *FederationService
-	usuarioStore UsuarioStorage
-	canalStore   CanalStorage
-	eventoStore  EventoStorage
-	usuarioRepo UsuarioStorage
+	uow               WorkUnit
+	membershipService *RoomMembershipService
+	fedService        *FederationService
+	usuarioStore      UsuarioStorage
+	canalStore        CanalStorage
+	eventoStore       EventoStorage
+	usuarioRepo       UsuarioStorage
 }
 
-func NewRoomAdminService(serverName, keyID string, privateKey ed25519.PrivateKey, uow WorkUnit, fedService *FederationService, canalStore CanalStorage, eventoStore EventoStorage, usuarioStore UsuarioStorage, usuarioRepo UsuarioStorage) *RoomAdminService {
+func NewRoomAdminService(serverName, keyID string, privateKey ed25519.PrivateKey, uow WorkUnit, fedService *FederationService, canalStore CanalStorage, eventoStore EventoStorage, usuarioStore UsuarioStorage, usuarioRepo UsuarioStorage, membershipService *RoomMembershipService) *RoomAdminService {
 	return &RoomAdminService{
-		serverName:   serverName,
-		keyID:        keyID,
-		privateKey:   privateKey,
-		uow:          uow,
-		fedService:   fedService,
-		usuarioStore: usuarioStore,
-		canalStore:   canalStore,
-		eventoStore:  eventoStore,
-		usuarioRepo:  usuarioRepo,
+		serverName:        serverName,
+		keyID:             keyID,
+		privateKey:        privateKey,
+		uow:               uow,
+		fedService:        fedService,
+		usuarioStore:      usuarioStore,
+		canalStore:        canalStore,
+		eventoStore:       eventoStore,
+		usuarioRepo:       usuarioRepo,
+		membershipService: membershipService,
 	}
 }
 
@@ -70,14 +72,14 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 	eventsToSave = append(eventsToSave, buildCreateEvent(roomID, props.CreatorID, version))
 
 	var displayName, avatarURL string
-    if profile, err := s.usuarioRepo.GetProfileByID(ctx, props.CreatorID); err == nil && profile != nil {
-        if profile.DisplayName != nil {
-            displayName = *profile.DisplayName
-        }
-        if profile.AvatarURL != nil {
-            avatarURL = *profile.AvatarURL
-        }
-    }
+	if profile, err := s.usuarioRepo.GetProfileByID(ctx, props.CreatorID); err == nil && profile != nil {
+		if profile.DisplayName != nil {
+			displayName = *profile.DisplayName
+		}
+		if profile.AvatarURL != nil {
+			avatarURL = *profile.AvatarURL
+		}
+	}
 	// m.room.member
 	creatorJoinEvent := buildJoinEvent(roomID, props.CreatorID, displayName, avatarURL)
 	eventsToSave = append(eventsToSave, creatorJoinEvent)
@@ -120,16 +122,6 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 	customEvents := buildInitialStateEvents(roomID, props.CreatorID, props.InitialState)
 	eventsToSave = append(eventsToSave, customEvents...)
 
-	// invites
-	inviteEvents := make(map[string]*domain.Evento)
-
-	for _, invitee := range props.Invite {
-		inviteEvent := buildInviteEvent(roomID, props.CreatorID, invitee)
-		eventsToSave = append(eventsToSave, inviteEvent)
-		// Guarde a referência (o ponteiro), não a cópia do valor
-		inviteEvents[invitee] = inviteEvent
-	}
-
 	if err := linkAndHashGenesis(eventsToSave, s.serverName, s.keyID, s.privateKey); err != nil {
 		return nil, err
 	}
@@ -163,11 +155,6 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 		if err := s.canalStore.UpsertMembership(txCtx, roomID, props.CreatorID, "join", creatorJoinEvent.ID); err != nil {
 			return err
 		}
-		for invitee, event := range inviteEvents {
-			if err := s.canalStore.UpsertMembership(txCtx, roomID, invitee, "invite", event.ID); err != nil {
-				return err
-			}
-		}
 
 		// insere alias
 		if fullAlias != "" {
@@ -186,13 +173,11 @@ func (s *RoomAdminService) CreateRoom(ctx context.Context, props CreateRoomParam
 		return nil, err
 	}
 
-	// NOTE: eventos publicados automaticamente para usuarios escutando este canal
-
 	// publica convites diretamente aos usuários
-	for invitee, inviteEv := range inviteEvents {
-		// notifica servidores remotos
-		if util.IsRemoteUser(invitee, s.serverName) {
-			_ = s.fedService.QueueOutgoing(ctx, *inviteEv)
+	for _, invitee := range props.Invite {
+		err := s.membershipService.InviteUser(ctx, roomID, props.CreatorID, invitee, "", props.IsDirect)
+		if err != nil {
+			return nil, err
 		}
 	}
 

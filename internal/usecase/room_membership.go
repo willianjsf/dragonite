@@ -317,12 +317,16 @@ func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, room
 			if err := s.canalRepo.UpsertCurrentState(txCtx, roomID, tuple.EventType, tuple.StateKey, winningID); err != nil {
 				return fmt.Errorf("failed to upsert resolved state %s|%s: %w", tuple.EventType, tuple.StateKey, err)
 			}
+
+			// If the resolved state event is a room member, sync the membership table!
 			if tuple.EventType == "m.room.member" {
-				if ev, exists := eventsMap[winningID]; exists {
-					var content map[string]any
-					if err := json.Unmarshal(ev.Content, &content); err == nil {
-						if membership, ok := content["membership"].(string); ok {
-							_ = s.canalRepo.UpsertMembership(txCtx, roomID, tuple.StateKey, membership, winningID)
+				if ev, exists := eventsMap[winningID]; exists && ev.StateKey != nil {
+					var content struct {
+						Membership string `json:"membership"`
+					}
+					if err := json.Unmarshal(ev.Content, &content); err == nil && content.Membership != "" {
+						if err := s.canalRepo.UpsertMembership(txCtx, roomID, *ev.StateKey, content.Membership, winningID); err != nil {
+							return fmt.Errorf("failed to upsert resolved membership for %s: %w", *ev.StateKey, err)
 						}
 					}
 				}
@@ -346,7 +350,7 @@ func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, room
 // InviteUser convida um usuário (local ou remoto) a participar da sala, criando um evento
 // m.room.member com membership "invite". Para convidados remotos, o evento é assinado
 // localmente e enviado ao homeserver do convidado via
-func (s *RoomMembershipService) InviteUser(ctx context.Context, roomID, inviterID, inviteeID, reason string) error {
+func (s *RoomMembershipService) InviteUser(ctx context.Context, roomID, inviterID, inviteeID, reason string, isDirect bool) error {
 	// 1. O inviter precisa estar atualmente na sala
 	inviterStatus, err := s.canalRepo.GetUserMembership(ctx, roomID, inviterID)
 	if err != nil {
@@ -377,6 +381,10 @@ func (s *RoomMembershipService) InviteUser(ctx context.Context, roomID, inviterI
 	content := map[string]any{"membership": "invite"}
 	if reason != "" {
 		content["reason"] = reason
+	}
+
+	if isDirect {
+		content["is_direct"] = true
 	}
 
 	// --- NOVA BUSCA: Injetar Perfil no Convite ---

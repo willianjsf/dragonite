@@ -70,13 +70,13 @@ func main() {
 	stateResolver := usecase.NewStateResolverService(authRuleResolver)
 	fedService := usecase.NewFederationService(config.ServerName, config.KeyID, config.PrivateKey, storage, storage, storage, authRuleResolver, stateResolver)
 	dirService := usecase.NewDirectoryService(storage, storage, storage, fedService, config.ServerName)
-	roomAdminService := usecase.NewRoomAdminService(config.ServerName, config.KeyID, config.PrivateKey, storage, fedService, storage, storage, storage, storage)
-	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, fedService, authRuleResolver, storage, config.ServerName, config.KeyID, config.PrivateKey)
 	roomMembershipService := usecase.NewRoomMembershipService(storage, storage, storage, authRuleResolver, fedService, stateResolver, storage)
+	roomAdminService := usecase.NewRoomAdminService(config.ServerName, config.KeyID, config.PrivateKey, storage, fedService, storage, storage, storage, storage, roomMembershipService)
+	roomInteractionsService := usecase.NewRoomInteractionService(storage, storage, fedService, authRuleResolver, storage, config.ServerName, config.KeyID, config.PrivateKey)
 	profileService := usecase.NewProfileService(
-		storage,                     // 1. UsuarioStorage
-		storage,                     // 2. CanalStorage
-		roomMembershipService,  // 3. A variável que guarda o *RoomMembershipService
+		storage,                 // 1. UsuarioStorage
+		storage,                 // 2. CanalStorage
+		roomMembershipService,   // 3. A variável que guarda o *RoomMembershipService
 		roomInteractionsService, // 4. A variável que guarda o *RoomInteractionService
 	)
 	accountService := usecase.NewAccountService(storage)

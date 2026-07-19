@@ -134,6 +134,17 @@ func (s *RoomInteractionService) SendStateEvent(ctx context.Context, params Stat
 			return err
 		}
 
+		if params.EventType == "m.room.member" {
+			var content struct {
+				Membership string `json:"membership"`
+			}
+			if err := json.Unmarshal(contentBytes, &content); err == nil && content.Membership != "" {
+				if err := s.canalRepo.UpsertMembership(txCtx, params.RoomID, params.StateKey, content.Membership, eventID); err != nil {
+					return err
+				}
+			}
+		}
+
 		return nil
 	})
 
@@ -317,7 +328,7 @@ func (s *RoomInteractionService) GetMessages(ctx context.Context, roomID, userID
 func (s *RoomInteractionService) SendReceipt(ctx context.Context, userID, roomID, receiptType, eventID string) error {
 	// O utilizador só pode enviar recibos de salas onde está ativamente (join)
 	status, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
-	if err != nil || status != "join" {
+	if err != nil || (status != "join" && status != "invite") {
 		return types.ErrForbidden
 	}
 

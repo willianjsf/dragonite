@@ -316,7 +316,7 @@ func (h *Handler) postInviteRoom(w http.ResponseWriter, r *http.Request) {
 		reason = *req.Reason
 	}
 
-	err := h.roomMembershipService.InviteUser(ctx, roomID, userID, req.UserID, reason)
+	err := h.roomMembershipService.InviteUser(ctx, roomID, userID, req.UserID, reason, false)
 	if err != nil {
 		if errors.Is(err, types.ErrForbidden) {
 			httputil.WriteMatrixError(w, http.StatusForbidden, httputil.M_FORBIDDEN, err.Error())

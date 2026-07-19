@@ -246,11 +246,14 @@ func (f *FederationService) ProcessInboundPDU(ctx context.Context, origin string
 					if err != nil {
 						return err
 					}
-					if histPDU.StateKey != nil {
-						err = f.canalStore.UpsertCurrentState(txCtx, histPDU.CanalID, histPDU.Tipo, *histPDU.StateKey, histPDU.ID)
-						if err != nil {
-							return err
-						}
+					err = f.canalStore.UpdateForwardExtremities(txCtx, histPDU.CanalID, histPDU.ID, histPDU.PrevEventos)
+					if err != nil {
+						return err
+					}
+
+					err = f.updateRoomStateAndMembership(txCtx, &histPDU)
+					if err != nil {
+						return err
 					}
 					return nil
 				})
@@ -291,19 +294,8 @@ func (f *FederationService) ProcessInboundPDU(ctx context.Context, origin string
 		}
 
 		// atualiza estado da sala se necessário
-		if pdu.StateKey != nil {
-			if err := f.canalStore.UpsertCurrentState(txCtx, pdu.CanalID, pdu.Tipo, *pdu.StateKey, pdu.ID); err != nil {
-				return fmt.Errorf("falha ao atualizar estado da sala: %w", err)
-			}
-
-			if pdu.Tipo == "m.room.member" {
-				var content map[string]any
-				if err := json.Unmarshal(pdu.Content, &content); err == nil {
-					if membership, ok := content["membership"].(string); ok {
-						_ = f.canalStore.UpsertMembership(txCtx, pdu.CanalID, *pdu.StateKey, membership, pdu.ID)
-					}
-				}
-			}
+		if err := f.updateRoomStateAndMembership(txCtx, &pdu); err != nil {
+			return fmt.Errorf("falha ao atualizar estado da sala: %w", err)
 		}
 
 		return nil
@@ -415,7 +407,16 @@ func (f *FederationService) MakeJoin(ctx context.Context, roomID, userID string,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get join rule: %w", err)
 	}
-	if joinRule != "public" && joinRule != "invite" {
+
+	if joinRule == "invite" {
+		membership, err := f.canalStore.GetUserMembership(ctx, roomID, userID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get user membership: %w", err)
+		}
+		if membership != "invite" {
+			return nil, types.ErrForbidden
+		}
+	} else if joinRule != "public" {
 		return nil, types.ErrForbidden
 	}
 
@@ -1216,6 +1217,32 @@ func (f *FederationService) resolveStateAtIngestion(ctx context.Context, roomID 
 	return resolvedState, nil
 }
 
+// updateRoomStateAndMembership ensures both the generic state map and the dedicated
+// membership view stay synchronized whenever a state event is processed.
+func (f *FederationService) updateRoomStateAndMembership(ctx context.Context, pdu *domain.Evento) error {
+	if pdu.StateKey == nil {
+		return nil
+	}
+
+	// 1. Update the generic state map
+	if err := f.canalStore.UpsertCurrentState(ctx, pdu.CanalID, pdu.Tipo, *pdu.StateKey, pdu.ID); err != nil {
+		return fmt.Errorf("falha ao atualizar estado da sala: %w", err)
+	}
+
+	// 2. If it's a membership event, keep the membership table in sync
+	if pdu.Tipo == "m.room.member" {
+		var content struct {
+			Membership string `json:"membership"`
+		}
+		if err := json.Unmarshal(pdu.Content, &content); err == nil && content.Membership != "" {
+			if err := f.canalStore.UpsertMembership(ctx, pdu.CanalID, *pdu.StateKey, content.Membership, pdu.ID); err != nil {
+				return fmt.Errorf("falha ao atualizar membership: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
 // DirectToDeviceEduContent é o conteúdo da EDU m.direct_to_device (S2S)
 type DirectToDeviceEduContent struct {
 	MessageID string                                `json:"message_id"`
