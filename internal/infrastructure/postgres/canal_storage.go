@@ -8,11 +8,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *PostgresStorage) Create(ctx context.Context, roomID, userID string) (*domain.Canal, error) {
+func (s *PostgresStorage) Create(ctx context.Context, roomID, userID string, roomVersion string) (*domain.Canal, error) {
 	db := getTxOrPool(ctx, s.db)
+	if roomVersion == "" {
+		roomVersion = "11"
+	}
 	row := db.QueryRow(ctx,
 		"INSERT INTO Canal (id_canal, versao_canal, criador, created_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING id_canal, versao_canal, criador, created_at",
-		roomID, "11", userID)
+		roomID, roomVersion, userID)
 
 	var canal domain.Canal
 	err := row.Scan(&canal.ID, &canal.Versao, &canal.Criador, &canal.CreatedAt)

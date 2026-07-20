@@ -944,7 +944,7 @@ func (h *Handler) putInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Salva o evento (e a prévia de estado da sala, se veio alguma)
-	err := h.fedService.ProcessInvite(r.Context(), roomID, &evento, inviteRoomState)
+	err := h.fedService.ProcessInvite(r.Context(), roomID, req.RoomVersion, &evento, inviteRoomState)
 	
 	if err != nil {
 		httputil.WriteMatrixError(w, http.StatusInternalServerError, httputil.M_UNKNOWN, err.Error())

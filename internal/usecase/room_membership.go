@@ -201,7 +201,7 @@ func (s *RoomMembershipService) JoinLocalRoom(ctx context.Context, userID, roomI
 
 func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, roomID, remoteServer string) error {
 	// 1. Send /make_join federation request to the remote server
-	protoEvent, err := s.fedService.MakeJoinCall(ctx, remoteServer, roomID, userID)
+	protoEvent, remoteRoomVersion, err := s.fedService.MakeJoinCall(ctx, remoteServer, roomID, userID)
 	if err != nil {
 		return fmt.Errorf("federated make_join failed: %w", err)
 	}
@@ -257,7 +257,7 @@ func (s *RoomMembershipService) JoinRemoteRoom(ctx context.Context, userID, room
 		// A. Ensure room metadata exists locally (create stub if first time seeing it)
 		if _, err := s.canalRepo.GetByID(txCtx, roomID); err != nil {
 			// Create room metadata locally if absent
-			_, _ = s.canalRepo.Create(txCtx, roomID, protoEvent.Sender)
+			_, _ = s.canalRepo.Create(txCtx, roomID, protoEvent.Sender, remoteRoomVersion)
 		}
 
 		// B. Check if we already have any local state for this room in our DB

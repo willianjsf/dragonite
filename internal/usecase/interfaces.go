@@ -52,7 +52,7 @@ type UsuarioStorage interface {
 }
 
 type CanalStorage interface {
-	Create(ctx context.Context, roomID, userID string) (*domain.Canal, error)
+	Create(ctx context.Context, roomID, userID string, roomVersion string) (*domain.Canal, error)
 	// Get all unique servers from users in the room
 	GetCanalParticipatingServers(ctx context.Context, canalID string) ([]string, error)
 	GetByID(ctx context.Context, canalID string) (*domain.Canal, error)

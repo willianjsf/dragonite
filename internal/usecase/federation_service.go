@@ -560,7 +560,7 @@ func (f *FederationService) ProcessSendLeave(ctx context.Context, roomID string,
 	})
 }
 
-func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, inviteEvent *domain.Evento, inviteRoomState []domain.StrippedEvento) error {
+func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, roomVersion string, inviteEvent *domain.Evento, inviteRoomState []domain.StrippedEvento) error {
 	err := f.uow.Execute(ctx, func(txCtx context.Context) error {
 		// checa se o canal existe
 		canal, err := f.canalStore.GetByID(txCtx, roomID)
@@ -569,7 +569,7 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 		}
 
 		if canal == nil {
-			_, err := f.canalStore.Create(txCtx, roomID, inviteEvent.Sender)
+			_, err := f.canalStore.Create(txCtx, roomID, inviteEvent.Sender, roomVersion)
 			if err != nil {
 				return fmt.Errorf("could not create room: %w", err)
 			}
@@ -798,10 +798,10 @@ type OutboundSendJoinResponse struct {
 }
 
 // MakeJoinCall hits GET /_matrix/federation/v1/make_join/{roomId}/{userId} on a remote host
-func (f *FederationService) MakeJoinCall(ctx context.Context, remoteServer, roomID, userID string) (*domain.Evento, error) {
+func (f *FederationService) MakeJoinCall(ctx context.Context, remoteServer, roomID, userID string) (*domain.Evento, string, error) {
 	targetHost, err := util.ResolveServerName(remoteServer)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Supported versions your server handles (e.g., "11" as seen in canal_storage.go)
@@ -809,34 +809,34 @@ func (f *FederationService) MakeJoinCall(ctx context.Context, remoteServer, room
 
 	authHeader, err := util.GenerateS2SAuthHeader(f.serverName, f.keyID, f.privateKey, "GET", uri, remoteServer, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to sign make_join request: %w", err)
+		return nil, "", fmt.Errorf("failed to sign make_join request: %w", err)
 	}
 
 	reqURL := buildFederationURL(targetHost, uri)
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.Header.Set("Authorization", authHeader)
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("remote server rejected make_join: %d - %s", resp.StatusCode, string(body))
+		return nil, "", fmt.Errorf("remote server rejected make_join: %d - %s", resp.StatusCode, string(body))
 	}
 
 	var makeJoinResult OutboundMakeJoinResponse
 	if err := json.NewDecoder(resp.Body).Decode(&makeJoinResult); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return &makeJoinResult.Event, nil
+	return &makeJoinResult.Event, makeJoinResult.RoomVersion, nil
 }
 
 // OutboundInviteRequest é o payload enviado a PUT /_matrix/federation/v2/invite/{roomId}/{eventId}
