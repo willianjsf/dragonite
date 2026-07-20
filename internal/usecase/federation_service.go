@@ -21,6 +21,7 @@ import (
 	"github.com/caio-bernardo/dragonite/internal/domain"
 	"github.com/caio-bernardo/dragonite/internal/domain/types"
 	"github.com/caio-bernardo/dragonite/internal/util"
+	"github.com/google/uuid"
 )
 
 // buildFederationURL monta a URL final de uma chamada S2S de forma consistente,
@@ -559,7 +560,7 @@ func (f *FederationService) ProcessSendLeave(ctx context.Context, roomID string,
 	})
 }
 
-func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, inviteEvent *domain.Evento) error {
+func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, inviteEvent *domain.Evento, inviteRoomState []domain.StrippedEvento) error {
 	err := f.uow.Execute(ctx, func(txCtx context.Context) error {
 		// checa se o canal existe
 		canal, err := f.canalStore.GetByID(txCtx, roomID)
@@ -587,6 +588,35 @@ func (f *FederationService) ProcessInvite(ctx context.Context, roomID string, in
 				return fmt.Errorf("failed to upsert membership: %w", err)
 			}
 		}
+
+		// Persiste o "invite_room_state" que veio junto do convite federado
+		for _, stripped := range inviteRoomState {
+			stateKey := ""
+			if stripped.StateKey != nil {
+				stateKey = *stripped.StateKey
+			}
+
+			previewEvent := &domain.Evento{
+				ID:               fmt.Sprintf("$invite-preview-%s", uuid.NewString()),
+				Tipo:             stripped.Tipo,
+				Content:          stripped.Content,
+				CanalID:          roomID,
+				Sender:           stripped.Sender,
+				OrigemServidorTS: inviteEvent.OrigemServidorTS,
+				StateKey:         &stateKey,
+				PrevEventos:      []string{},
+				AuthEventos:      []string{},
+				Depth:            0,
+			}
+
+			if err := f.eventoStore.SaveEvento(txCtx, previewEvent); err != nil {
+				return fmt.Errorf("failed to save invite room state preview (%s): %w", stripped.Tipo, err)
+			}
+			if err := f.canalStore.UpsertCurrentState(txCtx, roomID, stripped.Tipo, stateKey, previewEvent.ID); err != nil {
+				return fmt.Errorf("failed to upsert invite room state (%s): %w", stripped.Tipo, err)
+			}
+		}
+
 		return nil
 	})
 	return err
