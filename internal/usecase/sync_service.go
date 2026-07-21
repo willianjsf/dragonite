@@ -268,7 +268,7 @@ func (s *SyncService) GetEventsSince(ctx context.Context, userID string, deviceI
 	return SyncClientResponse{
 		AccountData:    SyncAccountData{Events: accountData},
 		DeviceOTKCount: otkCounts,
-		NextBatch:      since,
+		NextBatch:      nextBatchSoFar,
 		Rooms: RoomsSync{
 			Invite: mapInvites,
 			Join:   mapJoined,
