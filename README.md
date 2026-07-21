@@ -163,6 +163,7 @@ make run
 │   ├── 000008_add_evento_unsigned_filed.up.sql
 │   ├── 000009_presence_table.down.sql
 │   ├── 000009_presence_table.up.sql
+│   ├── 000010_typing_state.down.sql
 │   ├── 000010_typing_state.up.sql
 │   ├── 000011_backup_version_table.down.sql
 │   └── 000011_backup_version_table.up.sql

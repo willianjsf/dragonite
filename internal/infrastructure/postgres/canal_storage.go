@@ -194,7 +194,7 @@ func (s *PostgresStorage) GetStateEventID(ctx context.Context, canalID string, s
 func (s *PostgresStorage) UpsertMembership(ctx context.Context, roomID, userID, membership, id_evento string) error {
 	db := getTxOrPool(ctx, s.db)
 	_, err := db.Exec(ctx,
-		"INSERT INTO Canal_Membership (id_canal, id_usuario, membership_type, id_evento) VALUES ($1, $2, $3, $4) ON CONFLICT (id_canal, id_usuario) DO UPDATE SET membership_type = $3",
+		"INSERT INTO Canal_Membership (id_canal, id_usuario, membership_type, id_evento) VALUES ($1, $2, $3, $4) ON CONFLICT (id_canal, id_usuario) DO UPDATE SET membership_type = $3, id_evento = $4",
 		roomID, userID, membership, id_evento)
 	if err != nil {
 		return fmt.Errorf("failed to upsert membership: %w", err)

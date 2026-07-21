@@ -114,9 +114,10 @@ func (s *PostgresStorage) GetEventsOfCanalSinceLeft(ctx context.Context, userID 
 		FROM Evento e
 		WHERE e.id_canal = $2
 		  AND e.stream_ordering > $3
-		  AND EXISTS (
-		    SELECT 1
+		  AND e.stream_ordering <= (
+		    SELECT ev.stream_ordering
 		    FROM Canal_Membership cm
+		    JOIN Evento ev ON ev.id_evento = cm.id_evento
 		    WHERE cm.id_usuario = $1
 		      AND cm.id_canal = $2
 		      AND cm.membership_type = 'leave'

@@ -19,9 +19,10 @@ type RoomMembershipService struct {
 	fedService       *FederationService
 	stateResolver    StateResolver
 	usuarioRepo      UsuarioStorage
+	notifier         Notifier
 }
 
-func NewRoomMembershipService(uow WorkUnit, canalRepo CanalStorage, eventRepo EventoStorage, authRuleResolver *AuthRuleResolver, fedService *FederationService, stateResolver StateResolver, usuarioRepo UsuarioStorage) *RoomMembershipService {
+func NewRoomMembershipService(uow WorkUnit, canalRepo CanalStorage, eventRepo EventoStorage, authRuleResolver *AuthRuleResolver, fedService *FederationService, stateResolver StateResolver, usuarioRepo UsuarioStorage, notifier Notifier) *RoomMembershipService {
 	return &RoomMembershipService{
 		uow:              uow,
 		authRuleResolver: authRuleResolver,
@@ -30,13 +31,21 @@ func NewRoomMembershipService(uow WorkUnit, canalRepo CanalStorage, eventRepo Ev
 		fedService:       fedService,
 		stateResolver:    stateResolver,
 		usuarioRepo:      usuarioRepo,
+		notifier:         notifier,
 	}
 }
 
 func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID string) error {
 	// 1. Verify they are actually in the room (or invited)
 	currentStatus, err := s.canalRepo.GetUserMembership(ctx, roomID, userID)
-	if err != nil || (currentStatus != "join" && currentStatus != "invite") {
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if currentStatus == "leave" || currentStatus == "ban" {
+		// Idempotente: já não está na sala, não é erro.
+		return nil
+	}
+	if currentStatus != "join" && currentStatus != "invite" {
 		return fmt.Errorf("user is not in a state to leave this room")
 	}
 
@@ -97,6 +106,10 @@ func (s *RoomMembershipService) LeaveRoom(ctx context.Context, userID, roomID st
 	if err != nil {
 		return err
 	}
+
+	// 5. Immediately triggers the /sync process for the user who logged out
+	s.notifier.WakeUpUsers(userID)
+
 	// local clients notified by notifier
 	// 6. Notify remote servers
 	_ = s.fedService.QueueOutgoing(ctx, *leaveEvent)

@@ -173,6 +173,10 @@ func (s *SyncService) SyncClient(ctx context.Context, userID string, deviceID st
 	nextBatch.ToDevicePosition = response.NextBatch.ToDevicePosition
 	response.NextBatch = nextBatch
 
+	if b, err := json.Marshal(response); err == nil {
+    log.Printf("SYNC RESPONSE for %s: %s", userID, string(b))
+    }
+
 	return response, nil
 }
 

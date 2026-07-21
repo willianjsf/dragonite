@@ -119,6 +119,7 @@ type DirectoryStorage interface {
 
 type Notifier interface {
 	WaitForEvents(ctx context.Context, userID string) error
+	WakeUpUsers(userID string)
 }
 
 // Executes operations inside a transaction. Commit if succeeds or rollback in failure
